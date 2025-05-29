@@ -10,12 +10,17 @@ import 'dart:convert';
 void main() => runApp(MaterialApp(home: UnavailableListPage()));
 
 class UnavailableListPage extends StatefulWidget {
+  const UnavailableListPage({Key? key}) : super(key: key);
+
   @override
   _UnavailableListPageState createState() => _UnavailableListPageState();
 }
 
 class _UnavailableListPageState extends State<UnavailableListPage> {
   List<Map<String, dynamic>> unavailables = [];
+  bool _loading = false;
+  String _error = '';
+  bool _dataChanged = false; // Track if data was refreshed
 
   @override
   void initState() {
@@ -23,52 +28,107 @@ class _UnavailableListPageState extends State<UnavailableListPage> {
     fetchList();
   }
 
-  void reloadPage() {
-    fetchList();
-  }
+  Future<bool> fetchList() async {
+    setState(() {
+      _loading = true;
+      _error = '';
+    });
 
-  void fetchList() async {
-    final loggedInUser = context.read<AppStore>().loggedInUser;
+    try {
+      final loggedInUser = context.read<AppStore>().loggedInUser;
+      final reqData = {'userID': loggedInUser?.userID};
+      final url = Uri.parse(GET_UNAVAILABLE_URL);
 
-    final reqData = {'userID': loggedInUser?.userID};
+      final response = await http.post(
+        url,
+        body: jsonEncode(reqData),
+        headers: {'Content-Type': 'application/json'},
+      );
 
-    final url = Uri.parse(GET_UNAVAILABLE_URL);
-
-    final response = await http.post(
-      url,
-      body: jsonEncode(reqData),
-      headers: {'Content-Type': 'application/json'},
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      if (data['success'] == true) {
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        if (data['success'] == true) {
+          setState(() {
+            unavailables = List<Map<String, dynamic>>.from(data['data']);
+            _dataChanged = true; // Mark that data has been refreshed
+          });
+          return true;
+        } else {
+          setState(() {
+            _error = 'Failed to load unavailability: ${data['message'] ?? 'Unknown error'}';
+          });
+          return false;
+        }
+      } else {
         setState(() {
-          unavailables = List<Map<String, dynamic>>.from(data['data']);
+          _error = 'Failed to load unavailability: ${response.statusCode}';
         });
+        return false;
       }
+    } catch (e) {
+      setState(() {
+        _error = 'Error fetching unavailability: $e';
+      });
+      return false;
+    } finally {
+      setState(() {
+        _loading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('My Unavailability'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error.isNotEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('My Unavailability'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: Center(child: Text(_error)),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: Text('My Unavailability'), elevation: 0),
-      body:
-          unavailables.isEmpty
-              ? Center(child: Text('No unavailable records yet.'))
-              : ListView.builder(
+      appBar: AppBar(
+        title: const Text('My Unavailability'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pop(context, _dataChanged); // Return whether data changed
+          },
+        ),
+      ),
+      body: unavailables.isEmpty
+          ? const Center(child: Text('No unavailable records yet.'))
+          : RefreshIndicator(
+              onRefresh: fetchList,
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
                 itemCount: unavailables.length,
                 itemBuilder: (context, index) {
                   final unavailable = unavailables[index];
                   final start = DateTime.parse(unavailable['startTime']);
-                  final dateFormatted = DateFormat(
-                    'EEE, d MMM, yyyy',
-                  ).format(start);
+                  final dateFormatted = DateFormat('EEE, d MMM, yyyy').format(start);
                   final reason = unavailable['reason'] ?? '';
 
                   final hours = unavailable['duration'] ?? 1;
                   final days = (hours / 24).ceil();
+
                   return Container(
                     decoration: BoxDecoration(
                       border: Border(
@@ -86,7 +146,7 @@ class _UnavailableListPageState extends State<UnavailableListPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          padding: EdgeInsets.symmetric(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 10,
                             vertical: 4,
                           ),
@@ -94,10 +154,9 @@ class _UnavailableListPageState extends State<UnavailableListPage> {
                             color: Colors.teal,
                             borderRadius: BorderRadius.circular(20),
                           ),
-
                           child: Text(
                             '$days DAY${days == 1 ? '' : 'S'}',
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
@@ -105,7 +164,7 @@ class _UnavailableListPageState extends State<UnavailableListPage> {
                             ),
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
                           dateFormatted,
                           style: TextStyle(
@@ -114,7 +173,7 @@ class _UnavailableListPageState extends State<UnavailableListPage> {
                             color: Colors.black87,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
                           reason,
                           style: TextStyle(
@@ -127,14 +186,15 @@ class _UnavailableListPageState extends State<UnavailableListPage> {
                   );
                 },
               ),
+            ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.lightBlue, // Stylish color
-        foregroundColor: Colors.white, // Icon color
-        elevation: 4, // Subtle shadow
-        shape: const CircleBorder(), // Ensures round shape
+        backgroundColor: Colors.lightBlue,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        shape: const CircleBorder(),
         child: const Icon(
           Icons.add,
-          size: 28, // Slightly larger icon
+          size: 28,
         ),
         onPressed: () async {
           final result = await Navigator.push(
@@ -142,7 +202,7 @@ class _UnavailableListPageState extends State<UnavailableListPage> {
             MaterialPageRoute(builder: (context) => UnavailableAddPage()),
           );
           if (result != null && result == 'reload') {
-            reloadPage();
+            fetchList();
           }
         },
       ),
@@ -151,6 +211,8 @@ class _UnavailableListPageState extends State<UnavailableListPage> {
 }
 
 class UnavailableAddPage extends StatefulWidget {
+  const UnavailableAddPage({Key? key}) : super(key: key);
+
   @override
   _UnavailableAddPageState createState() => _UnavailableAddPageState();
 }
@@ -212,9 +274,7 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
     isFormValid =
         unavailableReason.trim().isNotEmpty &&
         unavailableStartDate.isBefore(unavailableEndDate);
-    isStartDateBeforeEndDate = unavailableStartDate.isBefore(
-      unavailableEndDate,
-    );
+    isStartDateBeforeEndDate = unavailableStartDate.isBefore(unavailableEndDate);
     setState(() {});
   }
 
@@ -305,7 +365,7 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
         borderRadius: BorderRadius.circular(8),
         borderSide: BorderSide.none,
       ),
-      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
     );
 
     return Scaffold(
@@ -328,10 +388,10 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
                 onChanged: updateUnavailableReason,
                 decoration: inputDecoration.copyWith(
                   labelText: 'Reason for Unavailability',
-                  prefixIcon: Icon(Icons.report_problem_outlined),
+                  prefixIcon: const Icon(Icons.report_problem_outlined),
                 ),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               Row(
                 children: <Widget>[
                   Expanded(
@@ -343,7 +403,7 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
                           readOnly: true,
                           decoration: inputDecoration.copyWith(
                             labelText: 'Start Time',
-                            prefixIcon: Icon(Icons.calendar_today_outlined),
+                            prefixIcon: const Icon(Icons.calendar_today_outlined),
                           ),
                         ),
                       ),
@@ -365,7 +425,7 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
                           readOnly: true,
                           decoration: inputDecoration.copyWith(
                             labelText: 'End Time',
-                            prefixIcon: Icon(Icons.calendar_today_outlined),
+                            prefixIcon: const Icon(Icons.calendar_today_outlined),
                           ),
                         ),
                       ),
@@ -373,7 +433,7 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
                   ),
                 ],
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
               Text(
                 'Unavailable Duration: ${unavailableDuration.inHours} hours',
                 textAlign: TextAlign.center,
@@ -382,24 +442,23 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
                   color: Colors.grey[800],
                 ),
               ),
-
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               if (!isStartDateBeforeEndDate)
                 Text(
                   '⚠ Start time must be before end time.',
                   style: TextStyle(color: Colors.red[600], fontSize: 13),
                 ),
-              SizedBox(height: 24),
+              const SizedBox(height: 24),
               Align(
                 alignment: Alignment.center,
                 child: ElevatedButton(
                   onPressed: isFormValid ? saveUnavailable : null,
-                  child: Text('Save'),
+                  child: const Text('Save'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.lightBlue[400],
                     foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                    textStyle: TextStyle(fontSize: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                    textStyle: const TextStyle(fontSize: 16),
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),

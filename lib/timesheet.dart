@@ -29,6 +29,20 @@ class _TimeSheetPageState extends State<TimeSheetPage>
     super.initState();
     fetchTimesheets();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChanged); // Add listener for tab changes
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_onTabChanged); // Remove listener on dispose
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      fetchTimesheets(); // Refresh data when tab changes
+    }
   }
 
   void _onAddPressed() {
@@ -203,7 +217,6 @@ class _TimeSheetPageState extends State<TimeSheetPage>
         ),
       ),
     );
-    ;
   }
 
   @override

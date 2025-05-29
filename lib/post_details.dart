@@ -124,6 +124,16 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     }
   }
 
+    String _getInitials(String name) {
+    if (name.trim().isEmpty) return '?';
+
+    final parts = name.trim().split(RegExp(r'\s+')); // handles multiple spaces
+    final first = parts.isNotEmpty ? parts[0][0] : '';
+    final last = parts.length > 1 ? parts[1][0] : '';
+
+    return (first + last).toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     final loggedInUser =
@@ -153,7 +163,8 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                     radius: 24,
                     backgroundColor: Colors.blueGrey[400],
                     child: Text(
-                      widget.userInitials,
+                      // widget.userInitials,
+                      _getInitials(widget.userName),
                       style: const TextStyle(fontSize: 18, color: Colors.white),
                     ),
                   ),
@@ -207,10 +218,10 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: Image.network(
-                    '$SERVER_URL${widget.attachmentUrl}',
-                    height: 180,
+                    '$IMAGE_SERVER_URL${widget.attachmentUrl}',
+                    height: 200,
                     width: double.infinity,
-                    fit: BoxFit.cover,
+                    fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
                       // Show a placeholder or empty box on error
                       return Container(
@@ -286,7 +297,8 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                             leading: CircleAvatar(
                               child: Text(
                                 authorName.isNotEmpty
-                                    ? authorName[0].toUpperCase()
+                                    // ? authorName[0].toUpperCase()
+                                    ? _getInitials(authorName)
                                     : 'U',
                               ),
                             ),

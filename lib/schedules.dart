@@ -254,15 +254,16 @@ class _SchedulesPageState extends State<SchedulesPage> {
             ),
           ),
           Expanded(
-            child:
-                scheduleItems.isEmpty
-                    ? const Center(child: Text("No shifts for this range"))
-                    : ListView.builder(
-                      itemCount: scheduleItems.length,
-                      itemBuilder: (context, index) {
-                        return scheduleListTile(scheduleItems[index]);
-                      },
-                    ),
+            child: RefreshIndicator(
+              onRefresh: fetchData,
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                itemCount: scheduleItems.length,
+                itemBuilder: (context, index) {
+                  return scheduleListTile(scheduleItems[index]);
+                },
+              ),
+            ),
           ),
         ],
       ),

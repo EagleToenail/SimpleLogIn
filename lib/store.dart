@@ -17,12 +17,11 @@ class AppStore with ChangeNotifier {
     "status": '',
   };
 
-  UserInfo? _loggedInUser;
-
   List<PeopleItem> get people => _people;
   List<LocationItem> get locations => _locations;
   Map<String, dynamic> get schedule => _schedule;
 
+  UserInfo? _loggedInUser;
   UserInfo? get loggedInUser => _loggedInUser;
 
   void setPeople(List<PeopleItem> people) {

@@ -382,7 +382,6 @@ Future<void> sendMessageToServer(
   String password,
 ) async {
   final requestBody = {'email': email, 'password': password};
-
   final url = Uri.parse(LOGIN_URL);
 
   final response = await http.post(
@@ -393,7 +392,6 @@ Future<void> sendMessageToServer(
 
   if (response.statusCode == 200) {
     final data = jsonDecode(response.body);
-
     // * Get User and Location data
     myAppKey.currentState?.loadData();
 

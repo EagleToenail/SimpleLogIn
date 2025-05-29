@@ -1,12 +1,78 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import 'package:simple_login/shifts/shift_detail.dart';
 import 'package:simple_login/store.dart';
+import 'package:simple_login/const.dart';
 
-class UpcomingShifts extends StatelessWidget {
-  final List<ScheduleItem> shifts;
+class UpcomingShifts extends StatefulWidget {
+  const UpcomingShifts({Key? key}) : super(key: key);
 
-  const UpcomingShifts({Key? key, required this.shifts}) : super(key: key);
+  @override
+  State<UpcomingShifts> createState() => _UpcomingShiftsState();
+}
+
+class _UpcomingShiftsState extends State<UpcomingShifts> {
+  List<ScheduleItem> shifts = [];
+  bool _loading = false;
+  String _error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchShifts();
+  }
+
+  Future<bool> _fetchShifts() async {
+    setState(() {
+      _loading = true;
+      _error = '';
+    });
+
+    try {
+      final loggedInUser =
+          Provider.of<AppStore>(context, listen: false).loggedInUser;
+      final userID = loggedInUser?.userID;
+
+      final requestBody = {'userID': userID};
+      final url = Uri.parse(GET_SHIFT_LIST_URL);
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          shifts = (data['shifts'] as List<dynamic>)
+              .map<ScheduleItem>((item) => ScheduleItem.fromJson(item))
+              .toList();
+        });
+        print("✅ Shift fetch success");
+        return true;
+      } else {
+        setState(() {
+          _error = 'Failed to load shifts: ${response.statusCode}';
+        });
+        print('❌ Error: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Error fetching shifts: $e';
+      });
+      print('❌ Error: $e');
+      return false;
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
 
   // Helper to format date
   String formatDate(DateTime dt) => DateFormat('EEE, dd MMM yyyy').format(dt);
@@ -42,11 +108,38 @@ class UpcomingShifts extends StatelessWidget {
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Upcoming Shifts'),
+          backgroundColor: Colors.white,
+          elevation: 0.5,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+        backgroundColor: const Color(0xFFF7F9FB),
+      );
+    }
+
+    if (_error.isNotEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Upcoming Shifts'),
+          backgroundColor: Colors.white,
+          elevation: 0.5,
+        ),
+        body: Center(child: Text(_error)),
+        backgroundColor: const Color(0xFFF7F9FB),
+      );
+    }
+
     if (shifts.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Upcoming Shifts')),
+        appBar: AppBar(
+          title: const Text('Upcoming Shifts'),
+          backgroundColor: Colors.white,
+          elevation: 0.5,
+        ),
         body: const Center(
           child: Text(
             'No upcoming shifts',
@@ -65,11 +158,12 @@ class UpcomingShifts extends StatelessWidget {
     List<ScheduleItem> sortedShifts = List.from(shifts)
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
     final grouped = Map.fromEntries(
-      groupByWeek(sortedShifts).entries.toList()..sort(
-        (a, b) => DateFormat(
-          "EEE, dd MMM yyyy",
-        ).parse(a.key).compareTo(DateFormat("EEE, dd MMM yyyy").parse(b.key)),
-      ),
+      groupByWeek(sortedShifts).entries.toList()
+        ..sort(
+          (a, b) => DateFormat("EEE, dd MMM yyyy")
+              .parse(a.key)
+              .compareTo(DateFormat("EEE, dd MMM yyyy").parse(b.key)),
+        ),
     );
 
     return Scaffold(
@@ -79,219 +173,221 @@ class UpcomingShifts extends StatelessWidget {
         elevation: 0.5,
       ),
       backgroundColor: const Color(0xFFF7F9FB),
-      body: ListView(
-        children: [
-          for (var week in grouped.entries) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-              child: Text(
-                'Week of ${week.key}',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF3B4861),
-                  fontSize: 15,
-                  letterSpacing: 0.2,
+      body: RefreshIndicator(
+        onRefresh: _fetchShifts,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            for (var week in grouped.entries) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+                child: Text(
+                  'Week of ${week.key}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF3B4861),
+                    fontSize: 15,
+                    letterSpacing: 0.2,
+                  ),
                 ),
               ),
-            ),
-            ...week.value.map((shift) {
-              final start = shift.startTime;
-              final end = shift.endTime;
-              final location = shift.location.name?.trim() ?? '';
-              final area = shift.location.area ?? '';
-              final duration = end.difference(start);
-              final type = shift.type;
-              final durationStr =
-                  '${duration.inHours}h ${(duration.inMinutes % 60).toString().padLeft(2, '0')}m';
+              ...week.value.map((shift) {
+                final start = shift.startTime;
+                final end = shift.endTime;
+                final location = shift.location.name?.trim() ?? '';
+                final area = shift.location.area ?? '';
+                final duration = end.difference(start);
+                final type = shift.type;
+                final durationStr =
+                    '${duration.inHours}h ${(duration.inMinutes % 60).toString().padLeft(2, '0')}m';
 
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE4E7EC), width: 1),
-                ),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder:
-                            (context) => ShiftDetailPage(
-                              shift: shift.toJson(),
-                              nowork: false,
-                            ),
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE4E7EC), width: 1),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ShiftDetailPage(
+                            shift: shift.toJson(),
+                            nowork: false,
+                          ),
+                        ),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 8,
+                        horizontal: 14,
                       ),
-                    );
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                      horizontal: 14,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    DateFormat(
-                                      'EEE, dd MMM yyyy',
-                                    ).format(start),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.grey[700],
-                                      fontSize: 14,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      DateFormat('EEE, dd MMM yyyy').format(start),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.grey[700],
+                                        fontSize: 14,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(width: 7),
-                                  if (type == "shift_swap")
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFF5B29),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Text(
-                                        'SWAP',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w500,
+                                    const SizedBox(width: 7),
+                                    if (type == "shift_swap")
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFF5B29),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Text(
+                                          'SWAP',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  if (type == "shift_offer")
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Color(0xFFFFB429),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        'OFFER',
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w500,
+                                    if (type == "shift_offer")
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Color(0xFFFFB429),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          'OFFER',
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 3),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.schedule,
-                                    size: 12,
-                                    color: Color(0xFF8A94A6),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${DateFormat('h:mm a').format(start)} - ${DateFormat('h:mm a').format(end)}',
-                                    style: const TextStyle(
-                                      color: Color(0xFF3B4861),
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 7),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue[50],
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      durationStr,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF2962FF),
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 5),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.assignment_ind,
-                                    size: 12,
-                                    color: Color(0xFF8A94A6),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    area,
-                                    style: const TextStyle(
-                                      color: Color(0xFF3B4861),
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (location.isNotEmpty) ...[
-                                const SizedBox(height: 5),
+                                  ],
+                                ),
+                                const SizedBox(height: 3),
                                 Row(
                                   children: [
                                     const Icon(
-                                      Icons.location_on,
+                                      Icons.schedule,
                                       size: 12,
                                       color: Color(0xFF8A94A6),
                                     ),
                                     const SizedBox(width: 4),
-                                    Expanded(
+                                    Text(
+                                      '${DateFormat('h:mm a').format(start)} - ${DateFormat('h:mm a').format(end)}',
+                                      style: const TextStyle(
+                                        color: Color(0xFF3B4861),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 7),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue[50],
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
                                       child: Text(
-                                        location,
+                                        durationStr,
                                         style: const TextStyle(
-                                          color: Color(0xFF8A94A6),
                                           fontSize: 12,
-                                          overflow: TextOverflow.ellipsis,
+                                          color: Color(0xFF2962FF),
+                                          fontWeight: FontWeight.w500,
                                         ),
                                       ),
                                     ),
                                   ],
                                 ),
+                                const SizedBox(height: 5),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.assignment_ind,
+                                      size: 12,
+                                      color: Color(0xFF8A94A6),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      area,
+                                      style: const TextStyle(
+                                        color: Color(0xFF3B4861),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (location.isNotEmpty) ...[
+                                  const SizedBox(height: 5),
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.location_on,
+                                        size: 12,
+                                        color: Color(0xFF8A94A6),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          location,
+                                          style: const TextStyle(
+                                            color: Color(0xFF8A94A6),
+                                            fontSize: 12,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            }),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 2, 20, 18),
-              child: Text(
-                'Weekly total: ${weeklyTotal(week.value).toStringAsFixed(1)} hrs',
-                style: const TextStyle(
-                  color: Color(0xFF8A94A6),
-                  fontStyle: FontStyle.italic,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
+                );
+              }),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 2, 20, 18),
+                child: Text(
+                  'Weekly total: ${weeklyTotal(week.value).toStringAsFixed(1)} hrs',
+                  style: const TextStyle(
+                    color: Color(0xFF8A94A6),
+                    fontStyle: FontStyle.italic,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 }
+

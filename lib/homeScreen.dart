@@ -25,6 +25,8 @@ class _HomeScreenPageState extends State<HomeScreenPage> {
   List<ScheduleItem> shifts = [];
   List<Map<String, dynamic>> noworks = [];
   List<Map<String, dynamic>> timesheets = [];
+  bool _loading = false;
+  String _error = '';
 
   @override
   void initState() {
@@ -33,6 +35,11 @@ class _HomeScreenPageState extends State<HomeScreenPage> {
   }
 
   Future<void> fetchShifts() async {
+    setState(() {
+      _loading = true; // Show loading indicator
+      _error = ''; // Clear previous errors
+    });
+    try {
     final loggedInUser =
         Provider.of<AppStore>(context, listen: false).loggedInUser;
     final userID = loggedInUser?.userID;
@@ -81,7 +88,21 @@ class _HomeScreenPageState extends State<HomeScreenPage> {
 
       print("✅ Shift fetch success");
     } else {
-      print('❌ Error: ${response.statusCode}');
+      setState(() {
+          _error = 'Failed to load data: ${response.statusCode}';
+        });
+        print('❌ Error: ${response.statusCode}');
+      }     
+    }
+    catch (e) {
+      setState(() {
+        _error = 'Error fetching data: $e';
+      });
+      print('❌ Error: $e');
+    } finally {
+      setState(() {
+        _loading = false;
+      });
     }
   }
 
@@ -89,164 +110,191 @@ class _HomeScreenPageState extends State<HomeScreenPage> {
   Widget build(BuildContext context) {
     Color pastel(Color color) => color.withOpacity(0.15);
 
-    return Container(
-      width: double.infinity,
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Current Time Card
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              elevation: 0,
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              color: Colors.blue[50],
+    return Scaffold(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error.isNotEmpty
+          ? Center(child: Text(_error))
+          : RefreshIndicator(
+            onRefresh: fetchShifts,
+            child: SingleChildScrollView(
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 32,
-                      horizontal: 18,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
+                  // Current Time Card
+                  Card(
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: const Color(0xFFF4F4F6),
-                      ), // subtle border
-                      // Optional: soft shadow
-                      // boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
                     ),
+                    elevation: 0,
+                    margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    color: Colors.blue[50],
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [ServerTimeClock()],
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 32,
+                            horizontal: 18,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: const Color(0xFFF4F4F6),
+                            ), // subtle border
+                            // Optional: soft shadow
+                            // boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [ServerTimeClock()],
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+
+                  // Shifts Card
+                  _DashboardCard(
+                    icon: Icons.calendar_today,
+                    iconBg: Colors.green[700]!,
+                    iconBgPastel: pastel(Colors.green[700]!),
+                    title: 'Shifts',
+                    items: [
+                      _DashboardListItem(
+                          label: 'All Upcoming Shifts',
+                          count: shifts.length,
+                          onTap: () async {
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const UpcomingShifts(),
+                              ),
+                            );
+                            if (result == true) {
+                              fetchShifts(); // Refresh HomeScreenPage data
+                            }
+                          },
+                      ),
+                      _DashboardListItem(
+                        label: 'Available Shifts',
+                        count: noworks.length,
+                        onTap: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const AvailablePage(),
+                            ),
+                          );
+                          if (result == true) {
+                            fetchShifts(); // Refresh HomeScreenPage data
+                          }
+                        },
+                      ),
+                      _DashboardListItem(
+                        label: 'Timesheets',
+                        count: timesheets.length,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => HomePage(currentTabIndex: 3),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+
+                  // Time Off Card
+                  _DashboardCard(
+                    icon: Icons.beach_access,
+                    iconBg: Colors.purple[700]!,
+                    iconBgPastel: pastel(Colors.purple[700]!),
+                    title: 'Time Off',
+                    items: [
+                      // _DashboardListItem(
+                      //   label: 'Leave',
+                      //   onTap: () {
+                      //     Navigator.push(
+                      //       context,
+                      //       MaterialPageRoute(builder: (context) => LeaveListPage()),
+                      //     );
+                      //   },
+                      // ),
+                      _DashboardListItem(
+                        label: 'Leave Requests',
+                        onTap: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const LeaveListPage(),
+                            ),
+                          );
+                          if (result == true) {
+                            fetchShifts(); // Refresh HomeScreenPage data (adjust method name as needed)
+                          }
+                        },
+                      ),
+                      _DashboardListItem(
+                        label: 'My Unavailability',
+                        onTap: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const UnavailableListPage(),
+                            ),
+                          );
+                          if (result == true) {
+                            fetchShifts(); // Refresh HomeScreenPage data (adjust method name as needed)
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+
+                  // Tasks Card
+                  _DashboardCard(
+                    icon: Icons.check_rounded,
+                    iconBg: Colors.blue[900]!,
+                    iconBgPastel: pastel(Colors.blue[900]!),
+                    title: 'Tasks',
+                    items: [
+                      _DashboardListItem(
+                        label: 'All Tasks',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => TaskMainPage()),
+                          );
+                        },
+                      ),
+                      _DashboardListItem(
+                        label: 'My Tasks',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => TaskMainPage()),
+                          );
+                        },
+                      ),
+                      _DashboardListItem(
+                        label: 'Assigned Tasks',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => TaskMainPage()),
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-
-            // Shifts Card
-            _DashboardCard(
-              icon: Icons.calendar_today,
-              iconBg: Colors.green[700]!,
-              iconBgPastel: pastel(Colors.green[700]!),
-              title: 'Shifts',
-              items: [
-                _DashboardListItem(
-                  label: 'All Upcoming Shifts',
-                  count: shifts.length,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => UpcomingShifts(shifts: shifts),
-                      ),
-                    );
-                  },
-                ),
-                _DashboardListItem(
-                  label: 'Available Shifts',
-                  count: noworks.length,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder:
-                            (context) =>
-                                AvailablePage(availableShifts: noworks),
-                      ),
-                    );
-                  },
-                ),
-                _DashboardListItem(
-                  label: 'Timesheets',
-                  count: timesheets.length,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => HomePage(currentTabIndex: 3),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-
-            // Time Off Card
-            _DashboardCard(
-              icon: Icons.beach_access,
-              iconBg: Colors.purple[700]!,
-              iconBgPastel: pastel(Colors.purple[700]!),
-              title: 'Time Off',
-              items: [
-                _DashboardListItem(
-                  label: 'Leave',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => LeaveListPage()),
-                    );
-                  },
-                ),
-                _DashboardListItem(
-                  label: 'Unavailability',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => UnavailableListPage(),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-
-            // Tasks Card
-            _DashboardCard(
-              icon: Icons.check_rounded,
-              iconBg: Colors.blue[900]!,
-              iconBgPastel: pastel(Colors.blue[900]!),
-              title: 'Tasks',
-              items: [
-                _DashboardListItem(
-                  label: 'All Tasks',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => TaskMainPage()),
-                    );
-                  },
-                ),
-                _DashboardListItem(
-                  label: 'My Tasks',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => TaskMainPage()),
-                    );
-                  },
-                ),
-                _DashboardListItem(
-                  label: 'Assigned Tasks',
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => TaskMainPage()),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+          )
     );
   }
 }

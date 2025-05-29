@@ -11,12 +11,17 @@ import 'dart:convert';
 void main() => runApp(MaterialApp(home: LeaveListPage()));
 
 class LeaveListPage extends StatefulWidget {
+  const LeaveListPage({Key? key}) : super(key: key);
+
   @override
   _LeaveListPageState createState() => _LeaveListPageState();
 }
 
 class _LeaveListPageState extends State<LeaveListPage> {
   List<Map<String, dynamic>> leaves = [];
+  bool _loading = false;
+  String _error = '';
+  bool _dataChanged = false; // Track if data was refreshed
 
   @override
   void initState() {
@@ -24,44 +29,103 @@ class _LeaveListPageState extends State<LeaveListPage> {
     fetchLeaves();
   }
 
-  void reloadPage() {
-    fetchLeaves();
-  }
+  Future<bool> fetchLeaves() async {
+    setState(() {
+      _loading = true;
+      _error = '';
+    });
 
-  void fetchLeaves() async {
-    print("📫 fetching leaves... ");
+    try {
+      print("📫 Fetching leaves...");
 
-    final loggedInUser = context.read<AppStore>().loggedInUser;
+      final loggedInUser = context.read<AppStore>().loggedInUser;
+      final reqData = {'userID': loggedInUser?.userID};
+      final url = Uri.parse(GET_LEAVE_URL);
 
-    final reqData = {'userID': loggedInUser?.userID};
+      final response = await http.post(
+        url,
+        body: jsonEncode(reqData),
+        headers: {'Content-Type': 'application/json'},
+      );
 
-    final url = Uri.parse(GET_LEAVE_URL);
-
-    final response = await http.post(
-      url,
-      body: jsonEncode(reqData),
-      headers: {'Content-Type': 'application/json'},
-    );
-
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200) {
-      print("🎢 Receive Data from server: $data");
-      if (data['success'] == true) {
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        print("🎢 Receive Data from server: $data");
+        if (data['success'] == true) {
+          setState(() {
+            leaves = List<Map<String, dynamic>>.from(data['leaves']);
+            _dataChanged = true; // Mark that data has been refreshed
+          });
+          return true;
+        } else {
+          setState(() {
+            _error = 'Failed to load leaves: ${data['message']}';
+          });
+          print('❌ Error: ${data['message']}');
+          return false;
+        }
+      } else {
         setState(() {
-          leaves = List<Map<String, dynamic>>.from(data['leaves']);
+          _error = 'Failed to load leaves: ${response.statusCode}';
         });
+        print('❌ Error: ${response.statusCode}');
+        return false;
       }
+    } catch (e) {
+      setState(() {
+        _error = 'Error fetching leaves: $e';
+      });
+      print('❌ Error: $e');
+      return false;
+    } finally {
+      setState(() {
+        _loading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Leave Requests'),
+          backgroundColor: Colors.white,
+          elevation: 0.5,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error.isNotEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Leave Requests'),
+          backgroundColor: Colors.white,
+          elevation: 0.5,
+        ),
+        body: Center(child: Text(_error)),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: Text('Leave Requests')),
-      body:
-          leaves.isEmpty
-              ? Center(child: Text('No leave requests yet.'))
-              : ListView.builder(
+      appBar: AppBar(
+        title: const Text('Leave Requests'),
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pop(context, _dataChanged); // Return whether data changed
+          },
+        ),
+      ),
+      body: leaves.isEmpty
+          ? const Center(child: Text('No leave requests yet.'))
+          : RefreshIndicator(
+              onRefresh: fetchLeaves,
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
                 itemCount: leaves.length,
                 itemBuilder: (context, index) {
                   final leave = leaves[index];
@@ -94,34 +158,32 @@ class _LeaveListPageState extends State<LeaveListPage> {
 
                   return IntrinsicHeight(
                     child: Material(
-                      color: Colors.transparent, // Needed for ripple to show
+                      color: Colors.transparent,
                       child: InkWell(
-                        onTap:
-                            isPending
-                                ? () async {
-                                  final result = await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder:
-                                          (context) => LeaveUpdatePage(
-                                            leaveID: leave['_id'],
-                                            leaveReason: leave['reason'],
-                                            selectedLeaveType: leave['type'],
-                                            startDateTime: start,
-                                            endDateTime: end,
-                                          ),
+                        onTap: isPending
+                            ? () async {
+                                final result = await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => LeaveUpdatePage(
+                                      leaveID: leave['_id'],
+                                      leaveReason: leave['reason'],
+                                      selectedLeaveType: leave['type'],
+                                      startDateTime: start,
+                                      endDateTime: end,
                                     ),
-                                  );
+                                  ),
+                                );
 
-                                  if (result != null && result == 'reload') {
-                                    reloadPage();
-                                  }
+                                if (result != null && result == 'reload') {
+                                  fetchLeaves();
                                 }
-                                : null,
+                              }
+                            : null,
                         splashColor: Colors.orange.withOpacity(0.2),
                         highlightColor: Colors.orange.withOpacity(0.1),
                         child: Container(
-                          margin: EdgeInsets.symmetric(
+                          margin: const EdgeInsets.symmetric(
                             vertical: 0,
                             horizontal: 0,
                           ),
@@ -139,8 +201,9 @@ class _LeaveListPageState extends State<LeaveListPage> {
                               // Main content
                               Expanded(
                                 child: Container(
-                                  margin: EdgeInsets.only(left: 8),
-                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                  margin: const EdgeInsets.only(left: 8),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 10),
                                   decoration: BoxDecoration(
                                     border: Border(
                                       bottom: BorderSide(
@@ -163,15 +226,14 @@ class _LeaveListPageState extends State<LeaveListPage> {
                                             Row(
                                               children: [
                                                 Text(
-                                                  '$startFormatted',
-                                                  style: TextStyle(
+                                                  startFormatted,
+                                                  style: const TextStyle(
                                                     fontWeight: FontWeight.w500,
                                                     fontSize: 15,
                                                   ),
                                                 ),
-                                                SizedBox(
-                                                  width: 8,
-                                                ), // space between date and status
+                                                const SizedBox(
+                                                    width: 8), // space between date and status
                                                 Text(
                                                   (leave['status'] as String)
                                                       .toUpperCase(),
@@ -183,17 +245,16 @@ class _LeaveListPageState extends State<LeaveListPage> {
                                                 ),
                                               ],
                                             ),
-
-                                            SizedBox(height: 4),
+                                            const SizedBox(height: 4),
                                             // Time range
                                             Text(
                                               '$startTimeFormatted - $endTimeFormatted',
-                                              style: TextStyle(
+                                              style: const TextStyle(
                                                 fontWeight: FontWeight.w500,
                                                 fontSize: 12,
                                               ),
                                             ),
-                                            SizedBox(height: 4),
+                                            const SizedBox(height: 4),
                                             // Leave Type
                                             Text(
                                               leave['type'] ?? '',
@@ -227,14 +288,15 @@ class _LeaveListPageState extends State<LeaveListPage> {
                   );
                 },
               ),
+            ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.lightBlue, // Stylish color
-        foregroundColor: Colors.white, // Icon color
-        elevation: 4, // Subtle shadow
-        shape: const CircleBorder(), // Ensures round shape
+        backgroundColor: Colors.lightBlue,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        shape: const CircleBorder(),
         child: const Icon(
           Icons.add,
-          size: 28, // Slightly larger icon
+          size: 28,
         ),
         onPressed: () async {
           final result = await Navigator.push(
@@ -242,13 +304,14 @@ class _LeaveListPageState extends State<LeaveListPage> {
             MaterialPageRoute(builder: (context) => LeaveAddPage()),
           );
           if (result != null && result == 'reload') {
-            reloadPage();
+            fetchLeaves();
           }
         },
       ),
     );
   }
 }
+
 
 class LeaveAddPage extends StatefulWidget {
   @override
@@ -969,3 +1032,4 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
     );
   }
 }
+

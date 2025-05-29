@@ -38,6 +38,9 @@ class _NewsFeedPageState extends State<NewsFeedPage> {
 
         if (data['success'] == true && data['newsfeeds'] is List) {
           final List<dynamic> feeds = data['newsfeeds'];
+          // print("===================================================");
+          // print(feeds[0]['attachementUrl']);
+          // print("===================================================");
 
           setState(() {
             _newsfeeds =
@@ -218,6 +221,16 @@ class PostCard extends StatelessWidget {
     this.attachmentType,
   });
 
+  String _getInitials(String name) {
+    if (name.trim().isEmpty) return '?';
+
+    final parts = name.trim().split(RegExp(r'\s+')); // handles multiple spaces
+    final first = parts.isNotEmpty ? parts[0][0] : '';
+    final last = parts.length > 1 ? parts[1][0] : '';
+
+    return (first + last).toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -266,7 +279,7 @@ class PostCard extends StatelessWidget {
                   CircleAvatar(
                     backgroundColor: Colors.grey.shade200,
                     child: Text(
-                      name.isNotEmpty ? name[0] : '?',
+                      _getInitials(name),
                       style: const TextStyle(color: Colors.black),
                     ),
                   ),
@@ -304,20 +317,20 @@ class PostCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
               ),
-              if (attachmentUrl != null && attachmentUrl!.isNotEmpty)
+              if (attachmentUrl != null && attachmentUrl!.isNotEmpty) 
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.network(
-                      '$SERVER_URL$attachmentUrl',
+                      '$IMAGE_SERVER_URL$attachmentUrl',
                       height: 180,
                       width: double.infinity,
-                      fit: BoxFit.cover,
+                      fit: BoxFit.contain,
                       errorBuilder: (context, error, stackTrace) {
                         // Show a placeholder or empty box on error
                         return Container(
-                          height: 180,
+                          height: 200,
                           color: Colors.grey[300],
                           alignment: Alignment.center,
                           child: const Icon(Icons.broken_image, size: 40),

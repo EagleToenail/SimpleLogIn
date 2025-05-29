@@ -30,18 +30,26 @@ class _TaskMainPageState extends State<TaskMainPage>
     _tabController = TabController(
       length: 2,
       vsync: this,
-      initialIndex:
-          widget.currentTabIndex ??
-          0, // If currentTabIndex is null, default to 1
+      initialIndex: widget.currentTabIndex ?? 0,
     );
+
+    // Add listener to refresh tasks when tab changes
+    _tabController.addListener(_onTabChanged);
 
     fetchTasks();
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged); // Clean up listener
     _tabController.dispose();
     super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      fetchTasks(); // Refresh tasks when tab changes
+    }
   }
 
   void reloadTasks() {
@@ -49,10 +57,9 @@ class _TaskMainPageState extends State<TaskMainPage>
   }
 
   void fetchTasks() async {
-    final loggedInUser =
-        Provider.of<AppStore>(context, listen: false).loggedInUser;
+    final loggedInUser = Provider.of<AppStore>(context, listen: false).loggedInUser;
 
-    final userID = loggedInUser?.userID; // Use .id instead of .userID
+    final userID = loggedInUser?.userID;
     if (userID == null) return;
 
     final requestBody = {"userID": userID};
@@ -87,7 +94,6 @@ class _TaskMainPageState extends State<TaskMainPage>
         assignedTasks = assigned;
       });
     } else {
-      // Handle error
       print("Failed to fetch tasks: ${response.statusCode}");
     }
   }
@@ -128,7 +134,6 @@ class _TaskMainPageState extends State<TaskMainPage>
         Toast.show(context, 'Failed to complete task', type: ToastType.error);
       }
     } else {
-      // Handle error
       print("Failed to update task status: ${response.statusCode}");
     }
   }
@@ -144,9 +149,7 @@ class _TaskMainPageState extends State<TaskMainPage>
             : null;
     final completedDate =
         task['completedDate'] != null
-            ? DateFormat(
-              'yyyy-MM-dd',
-            ).format(DateTime.parse(task['completedDate']))
+            ? DateFormat('yyyy-MM-dd').format(DateTime.parse(task['completedDate']))
             : null;
     final initials =
         (task['assignedTo'] ?? task['assignedBy'] ?? 'U')
@@ -165,12 +168,10 @@ class _TaskMainPageState extends State<TaskMainPage>
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Only show checkbox for "My Tasks"
             if (showCheckbox)
               Checkbox(
                 value: isCompleted,
                 onChanged: (newValue) async {
-                  // Call your API here to update status
                   await updateTaskStatus(task, newValue);
                 },
                 activeColor: Colors.deepPurple,
@@ -179,10 +180,8 @@ class _TaskMainPageState extends State<TaskMainPage>
                 ),
               )
             else
-              // For assigned tasks, show avatar icon instead
               Icon(Icons.assignment_ind, color: Colors.grey[400], size: 28),
             SizedBox(width: 8),
-            // Main info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -193,8 +192,7 @@ class _TaskMainPageState extends State<TaskMainPage>
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                       color: isCompleted ? Colors.grey : Colors.black,
-                      decoration:
-                          isCompleted ? TextDecoration.lineThrough : null,
+                      decoration: isCompleted ? TextDecoration.lineThrough : null,
                     ),
                   ),
                   SizedBox(height: 2),
@@ -205,8 +203,7 @@ class _TaskMainPageState extends State<TaskMainPage>
                     style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                   SizedBox(height: 2),
-                  if (task['notes'] != null &&
-                      task['notes'].toString().isNotEmpty)
+                  if (task['notes'] != null && task['notes'].toString().isNotEmpty)
                     Text(
                       task['notes'],
                       maxLines: 1,
@@ -226,8 +223,8 @@ class _TaskMainPageState extends State<TaskMainPage>
                         isCompleted
                             ? 'Completed on ${completedDate ?? ''}'
                             : dueDate != null
-                            ? 'Due on $dueDate'
-                            : '',
+                                ? 'Due on $dueDate'
+                                : '',
                         style: TextStyle(
                           color: isCompleted ? Colors.green : Colors.grey[700],
                           fontSize: 13,
@@ -238,7 +235,6 @@ class _TaskMainPageState extends State<TaskMainPage>
                 ],
               ),
             ),
-            // Avatar
             Container(
               margin: EdgeInsets.only(left: 8, top: 2),
               width: 40,
@@ -276,37 +272,32 @@ class _TaskMainPageState extends State<TaskMainPage>
       body: TabBarView(
         controller: _tabController,
         children: [
-          // My Tasks Tab (showCheckbox: true)
           myTasks.isEmpty
               ? Center(child: Text('No tasks yet.'))
               : ListView.builder(
-                itemCount: myTasks.length,
-                itemBuilder:
-                    (context, index) =>
-                        buildTaskCard(myTasks[index], showCheckbox: true),
-              ),
-          // Assigned Tasks Tab (showCheckbox: false)
+                  itemCount: myTasks.length,
+                  itemBuilder: (context, index) =>
+                      buildTaskCard(myTasks[index], showCheckbox: true),
+                ),
           assignedTasks.isEmpty
               ? Center(child: Text('No assigned tasks yet.'))
               : ListView.builder(
-                itemCount: assignedTasks.length,
-                itemBuilder:
-                    (context, index) => buildTaskCard(
-                      assignedTasks[index],
-                      showCheckbox: false,
-                    ),
-              ),
+                  itemCount: assignedTasks.length,
+                  itemBuilder: (context, index) => buildTaskCard(
+                    assignedTasks[index],
+                    showCheckbox: false,
+                  ),
+                ),
         ],
       ),
-
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.lightBlue, // Stylish color
-        foregroundColor: Colors.white, // Icon color
-        elevation: 4, // Subtle shadow
-        shape: const CircleBorder(), // Ensures round shape
+        backgroundColor: Colors.lightBlue,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        shape: const CircleBorder(),
         child: const Icon(
           Icons.add,
-          size: 28, // Slightly larger icon
+          size: 28,
         ),
         onPressed: () async {
           final result = await Navigator.push(
@@ -314,7 +305,7 @@ class _TaskMainPageState extends State<TaskMainPage>
             MaterialPageRoute(builder: (context) => TaskAddPage()),
           );
           if (result != null && result == 'reload') {
-            // reloadTasks();
+            reloadTasks();
           }
         },
       ),
@@ -506,10 +497,9 @@ class _TaskAddPageState extends State<TaskAddPage> {
                 readOnly: true,
                 onTap: _selectDueDate,
                 controller: TextEditingController(
-                  text:
-                      taskDueDate == null
-                          ? ''
-                          : '${taskDueDate!.year}-${taskDueDate!.month.toString().padLeft(2, '0')}-${taskDueDate!.day.toString().padLeft(2, '0')}',
+                  text: taskDueDate == null
+                      ? ''
+                      : '${taskDueDate!.year}-${taskDueDate!.month.toString().padLeft(2, '0')}-${taskDueDate!.day.toString().padLeft(2, '0')}',
                 ),
                 decoration: inputDecoration.copyWith(hintText: '(Optional)'),
               ),
@@ -529,8 +519,7 @@ class _TaskAddPageState extends State<TaskAddPage> {
             ),
             const SizedBox(height: 36),
             Align(
-              alignment:
-                  Alignment.center, // or centerRight / center if preferred
+              alignment: Alignment.center,
               child: ElevatedButton(
                 onPressed: isFormValid ? _saveTask : null,
                 child: Text('Save'),
@@ -572,8 +561,7 @@ class PeoplesPage extends StatelessWidget {
       backgroundColor: Colors.grey[50],
       body: ListView.separated(
         itemCount: people.length,
-        separatorBuilder:
-            (_, __) => Divider(height: 1, color: Colors.grey[300]),
+        separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey[300]),
         itemBuilder: (context, index) {
           final person = people[index];
           return ListTile(

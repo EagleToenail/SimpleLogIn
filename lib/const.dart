@@ -1,5 +1,7 @@
-const String SERVER_URL = 'http://13.60.93.6:3001/api';
-// const String SERVER_URL = 'http://192.168.141.64:3001/api';
+// const String SERVER_URL = 'http://13.60.93.6:3001/api';
+//const String IMAGE_SERVER_URL = 'http://13.60.93.6:3001';
+const String SERVER_URL = 'http://192.168.141.64:3001/api';
+const String IMAGE_SERVER_URL = 'http://192.168.141.64:3001';
 
 const String LOGIN_URL = '$SERVER_URL/user/login';
 const String GET_PEOPLE_URL = '$SERVER_URL/user';
