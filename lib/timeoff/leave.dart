@@ -342,7 +342,21 @@ class _LeaveAddPageState extends State<LeaveAddPage> {
       selectedLeaveType != 'Unspecified' &&
       startDateTime != null &&
       endDateTime != null &&
-      isStartBeforeEnd;
+      isStartBeforeEnd &&
+      (getAvailableEntitlement() >= leaveDuration.inHours || getAvailableEntitlement() == -1);
+
+  double getAvailableEntitlement() {
+    final appStore = Provider.of<AppStore>(context, listen: false);
+    final userDetails = appStore.getLoggedInUserDetails();
+    if (userDetails == null || userDetails.leaveEntitlements == null || selectedLeaveType == null) {
+      return -1;
+    }
+    final entitlement = (userDetails.leaveEntitlements as List<dynamic>).firstWhere(
+      (ent) => ent['type'] == selectedLeaveType,
+      orElse: () => {'available': -1},
+    );
+    return entitlement['available'] is int ? (entitlement['available'] as int).toDouble() : -1;
+  }
 
   Future<void> pickStartDateTime() async {
     final picked = await pickDateTime(context, startDateTime);
@@ -373,9 +387,7 @@ class _LeaveAddPageState extends State<LeaveAddPage> {
     final time = await showTimePicker(
       context: context,
       initialTime:
-          initialDate != null
-              ? TimeOfDay.fromDateTime(initialDate)
-              : TimeOfDay.now(),
+          initialDate != null ? TimeOfDay.fromDateTime(initialDate) : TimeOfDay.now(),
     );
     if (time == null) return null;
 
@@ -384,7 +396,8 @@ class _LeaveAddPageState extends State<LeaveAddPage> {
 
   void saveLeave(BuildContext context) async {
     if (_formKey.currentState?.validate() ?? false) {
-      final loggedInUser = context.read<AppStore>().loggedInUser;
+      final appStore = Provider.of<AppStore>(context, listen: false);
+      final loggedInUser = appStore.loggedInUser;
 
       final reqData = {
         'userID': loggedInUser?.userID,
@@ -403,9 +416,14 @@ class _LeaveAddPageState extends State<LeaveAddPage> {
       );
 
       final data = jsonDecode(response.body);
-      if (response.statusCode == 200 && data['success'] == true) {
-        Toast.show(context, data['message'], type: ToastType.success);
-        Navigator.pop(context, 'reload');
+      if (response.statusCode == 200) {
+        if(data['success'] == true) {
+         Toast.show(context, data['message'], type: ToastType.success);
+         Navigator.pop(context, 'reload');
+        } else {
+         Toast.show(context, data['message'], type: ToastType.warn);
+        }
+
       } else if (response.statusCode == 409) {
         Toast.show(context, data['message'], type: ToastType.error);
       }
@@ -423,31 +441,37 @@ class _LeaveAddPageState extends State<LeaveAddPage> {
 
     final inputDecoration = InputDecoration(
       filled: true,
-      fillColor: Colors.grey[100], // Light grey background for inputs
-      labelStyle: TextStyle(color: Colors.grey[700]), // Label color
-      prefixIconColor: Colors.grey[500], // Prefix icon color
+      fillColor: Colors.grey[100],
+      labelStyle: TextStyle(color: Colors.grey[700]),
+      prefixIconColor: Colors.grey[500],
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8), // Rounded corners
-        borderSide: BorderSide.none, // Remove the border
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide.none,
       ),
-      contentPadding: EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 16,
-      ), // Padding inside the fields
+      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
     );
+
+    final appStore = Provider.of<AppStore>(context);
+    final userDetails = appStore.getLoggedInUserDetails();
+    final entitlementTypes = userDetails?.leaveEntitlements != null
+        ? (userDetails!.leaveEntitlements as List<dynamic>)
+            .map((ent) => ent['name'] as String) // Removed unnecessary String? cast
+            .toList()
+        : ['Unspecified'];
+    
+    print("====================================]");
+    print(userDetails?.leaveEntitlements ?? "No user details available");
+    print("entitlementTypes: $entitlementTypes");
+    print("selectedLeaveType: $selectedLeaveType");
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Add Leave Request',
-          style: TextStyle(color: Colors.grey[800]), // Title style
-        ),
+        title: Text('Add Leave Request', style: TextStyle(color: Colors.grey[800])),
         backgroundColor: Colors.white,
         iconTheme: IconThemeData(color: Colors.grey[700]),
         elevation: 0.5,
       ),
-      backgroundColor:
-          Colors.grey[50], // Light grey background for the whole page
+      backgroundColor: Colors.grey[50],
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -460,53 +484,33 @@ class _LeaveAddPageState extends State<LeaveAddPage> {
                   labelText: 'Leave Reason',
                   prefixIcon: Icon(Icons.description),
                 ),
-                validator:
-                    (value) => value?.isEmpty ?? true ? 'Required field' : null,
+                validator: (value) => value?.isEmpty ?? true ? 'Required field' : null,
               ),
               SizedBox(height: 20),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  decoration: inputDecoration.copyWith(
-                    labelText: 'Leave Type',
-                    prefixIcon: Icon(Icons.event),
-                  ),
-                  value: selectedLeaveType,
-                  validator:
-                      (value) =>
-                          value == null || value == 'Unspecified'
-                              ? 'Required field'
-                              : null,
-                  onChanged: (String? newValue) {
-                    setState(() => selectedLeaveType = newValue);
-                  },
-                  isExpanded:
-                      true, // Make dropdown button expand to available width
-                  items:
-                      [
-                        'Unspecified',
-                        'Annual Leave (Vacation)',
-                        'Unpaid Leave - Leave',
-                        'Bereavement (Compassionate) Leave',
-                        'Community Service Leave',
-                        'Long Service Leave',
-                        'Time off in Lieu',
-                        'Other Paid Leave',
-                      ].map((type) {
-                        return DropdownMenuItem<String>(
-                          value: type,
-                          child: Text(
-                            type,
-                            style: TextStyle(color: Colors.grey[700]),
-                          ),
-                        );
-                      }).toList(),
+              DropdownButtonFormField<String>(
+                decoration: inputDecoration.copyWith(
+                  labelText: 'Leave Type',
+                  prefixIcon: Icon(Icons.event),
                 ),
+                value: selectedLeaveType,
+                validator: (value) =>
+                    value == null || value == 'Unspecified' ? 'Required field' : null,
+                onChanged: (String? newValue) {
+                  setState(() => selectedLeaveType = newValue);
+                },
+                isExpanded: true,
+                items: entitlementTypes.map((type) {
+                  return DropdownMenuItem<String>(
+                    value: type,
+                    child: Text(type, style: TextStyle(color: Colors.grey[700])),
+                  );
+                }).toList(),
               ),
-
               SizedBox(height: 20),
               Row(
                 children: <Widget>[
-                  Expanded(
+                  Flexible(
+                    flex: 1,
                     child: GestureDetector(
                       onTap: !enableAllDay ? pickStartDateTime : null,
                       child: AbsorbPointer(
@@ -517,30 +521,21 @@ class _LeaveAddPageState extends State<LeaveAddPage> {
                           ),
                           readOnly: true,
                           controller: TextEditingController(
-                            text:
-                                startDateTime != null
-                                    ? DateFormat(
-                                      'yyyy-MM-dd HH:mm',
-                                    ).format(startDateTime!)
-                                    : '',
+                            text: startDateTime != null
+                                ? DateFormat('yyyy-MM-dd HH:mm').format(startDateTime!)
+                                : '',
                           ),
-                          validator:
-                              (value) =>
-                                  startDateTime == null
-                                      ? 'Required field'
-                                      : null,
+                          validator: (value) => startDateTime == null ? 'Required field' : null,
                         ),
                       ),
                     ),
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text(
-                      'to',
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
+                    child: Text('to', style: TextStyle(color: Colors.grey[600])),
                   ),
-                  Expanded(
+                  Flexible(
+                    flex: 1,
                     child: GestureDetector(
                       onTap: !enableAllDay ? pickEndDateTime : null,
                       child: AbsorbPointer(
@@ -551,46 +546,47 @@ class _LeaveAddPageState extends State<LeaveAddPage> {
                           ),
                           readOnly: true,
                           controller: TextEditingController(
-                            text:
-                                endDateTime != null
-                                    ? DateFormat(
-                                      'yyyy-MM-dd HH:mm',
-                                    ).format(endDateTime!)
-                                    : '',
+                            text: endDateTime != null
+                                ? DateFormat('yyyy-MM-dd HH:mm').format(endDateTime!)
+                                : '',
                           ),
-                          validator:
-                              (value) =>
-                                  endDateTime == null ? 'Required field' : null,
+                          validator: (value) => endDateTime == null ? 'Required field' : null,
                         ),
                       ),
                     ),
                   ),
                 ],
               ),
-
               if (!isStartBeforeEnd)
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0),
                   child: Text(
                     '⚠ Start time must be before end time!',
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                   ),
                 ),
-
               SizedBox(height: 20),
               Text(
                 textAlign: TextAlign.center,
                 'Duration: ${leaveDuration.inHours} hours (${leaveDuration.inMinutes.remainder(60)} minutes)',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.blueGrey[700],
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600, color: Colors.blueGrey[700]),
               ),
+              SizedBox(height: 10),
+              // Text(
+              //   textAlign: TextAlign.center,
+              //   'Available: ${getAvailableEntitlement() >= 0 ? '${getAvailableEntitlement()} hours' : 'N/A'}',
+              //   style: TextStyle(fontWeight: FontWeight.w600, color: Colors.green[700]),
+              // ),
+              if (getAvailableEntitlement() >= 0 &&
+                  getAvailableEntitlement() < leaveDuration.inHours)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text(
+                    '⚠ Requested duration exceeds available entitlement!',
+                    style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                  ),
+                ),
               SizedBox(height: 20),
-
               Align(
                 alignment: Alignment.center,
                 child: ElevatedButton.icon(
@@ -601,14 +597,9 @@ class _LeaveAddPageState extends State<LeaveAddPage> {
                     backgroundColor: Colors.lightBlue[400],
                     foregroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    textStyle: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    textStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     disabledBackgroundColor: Colors.grey[300],
                     disabledForegroundColor: Colors.grey[600],
                   ),
@@ -679,7 +670,20 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
       selectedLeaveType != 'Unspecified' &&
       startDateTime != null &&
       endDateTime != null &&
-      isStartBeforeEnd;
+      (getAvailableEntitlement() >= leaveDuration.inHours || getAvailableEntitlement() == -1);
+
+  double getAvailableEntitlement() {
+    final appStore = Provider.of<AppStore>(context, listen: false);
+    final userDetails = appStore.getLoggedInUserDetails();
+    if (userDetails == null || userDetails.leaveEntitlements == null || selectedLeaveType == null) {
+      return -1;
+    }
+    final entitlement = (userDetails.leaveEntitlements as List<dynamic>).firstWhere(
+      (ent) => ent['type'] == selectedLeaveType,
+      orElse: () => {'available': -1},
+    );
+    return entitlement['available'] is int ? (entitlement['available'] as int).toDouble() : -1;
+  }
 
   Future<void> pickStartDateTime() async {
     final picked = await pickDateTime(context, startDateTime);
@@ -721,8 +725,6 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
 
   void saveLeave(BuildContext context) async {
     if (_formKey.currentState?.validate() ?? false) {
-      // Implement save logic
-
       final reqData = {
         'reason': leaveReason!,
         'type': selectedLeaveType!,
@@ -743,11 +745,10 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
       if (response.statusCode == 200) {
         if (data['success'] == true) {
           Toast.show(context, data['message'], type: ToastType.success);
+          Navigator.pop(context, 'reload');
+        } else {
+           Toast.show(context, data['message'], type: ToastType.warn);
         }
-        Navigator.pop(context, 'reload');
-        setState(() {
-          // leaves.add(json.decode(response.body));
-        });
       } else if (response.statusCode == 409) {
         Toast.show(context, data['message'], type: ToastType.error);
       }
@@ -756,8 +757,6 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
 
   void cancelLeave(BuildContext context) async {
     if (_formKey.currentState?.validate() ?? false) {
-      // Implement save logic
-
       final url = Uri.parse("$UPDATE_LEAVE_URL/$leaveID");
 
       final response = await http.delete(
@@ -804,6 +803,14 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
       ), // Padding inside the fields
     );
 
+    final appStore = Provider.of<AppStore>(context);
+    final userDetails = appStore.getLoggedInUserDetails();
+    final entitlementTypes = userDetails?.leaveEntitlements != null
+        ? (userDetails!.leaveEntitlements as List<dynamic>)
+            .map((ent) => ent['name'] as String) // Removed unnecessary String? cast
+            .toList()
+        : ['Unspecified'];
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -814,15 +821,13 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
         iconTheme: IconThemeData(color: Colors.grey[700]),
         elevation: 0.5,
       ),
-      backgroundColor:
-          Colors.grey[50], // Light grey background for the whole page
+      backgroundColor: Colors.grey[50], // Light grey background for the whole page
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
           key: _formKey,
           child: ListView(
             children: <Widget>[
-              // Leave Reason
               TextFormField(
                 onChanged: updateLeaveReason,
                 controller: _leaveReasonController,
@@ -830,55 +835,29 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
                   labelText: 'Leave Reason',
                   prefixIcon: Icon(Icons.description),
                 ),
-                validator:
-                    (value) => value?.isEmpty ?? true ? 'Required field' : null,
+                validator: (value) => value?.isEmpty ?? true ? 'Required field' : null,
               ),
               SizedBox(height: 20),
-
-              // Leave Type Dropdown
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  decoration: inputDecoration.copyWith(
-                    labelText: 'Leave Type',
-                    prefixIcon: Icon(Icons.event),
-                  ),
-                  value: selectedLeaveType,
-                  validator:
-                      (value) =>
-                          value == null || value == 'Unspecified'
-                              ? 'Required field'
-                              : null,
-                  onChanged: (String? newValue) {
-                    setState(() => selectedLeaveType = newValue);
-                  },
-                  isExpanded:
-                      true, // Make dropdown button expand to available width
-                  items:
-                      [
-                        'Unspecified',
-                        'Annual Leave (Vacation)',
-                        'Unpaid Leave - Leave',
-                        'Bereavement (Compassionate) Leave',
-                        'Community Service Leave',
-                        'Long Service Leave',
-                        'Time off in Lieu',
-                        'Other Paid Leave',
-                      ].map((type) {
-                        return DropdownMenuItem<String>(
-                          value: type,
-                          child: Text(
-                            type,
-                            style: TextStyle(
-                              color: Colors.grey[700],
-                            ), // Gray color for text
-                          ),
-                        );
-                      }).toList(),
+              DropdownButtonFormField<String>(
+                decoration: inputDecoration.copyWith(
+                  labelText: 'Leave Type',
+                  prefixIcon: Icon(Icons.event),
                 ),
+                value: selectedLeaveType,
+                validator: (value) =>
+                    value == null || value == 'Unspecified' ? 'Required field' : null,
+                onChanged: (String? newValue) {
+                  setState(() => selectedLeaveType = newValue);
+                },
+                isExpanded: true, // This ensures the dropdown fills the available width
+                items: entitlementTypes.map((type) {
+                  return DropdownMenuItem<String>(
+                    value: type,
+                    child: Text(type, style: TextStyle(color: Colors.grey[700])),
+                  );
+                }).toList(),
               ),
               SizedBox(height: 20),
-
-              // All Day Switch
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -888,9 +867,7 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
                     onChanged: (bool value) {
                       setState(() {
                         enableAllDay = value;
-
                         if (value) {
-                          // Strip time from date
                           if (startDateTime != null) {
                             startDateTime = DateTime(
                               startDateTime!.year,
@@ -912,55 +889,55 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
                 ],
               ),
               SizedBox(height: 16),
-
-              // Date & Time Pickers
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              Row(
                 children: <Widget>[
-                  GestureDetector(
-                    onTap: !enableAllDay ? pickStartDateTime : null,
-                    child: AbsorbPointer(
-                      child: TextFormField(
-                        decoration: inputDecoration.copyWith(
-                          labelText: 'Start Time',
-                          prefixIcon: Icon(Icons.calendar_today),
+                  // Removed Expanded, using flexible sizing with weights
+                  Flexible(
+                    flex: 1,
+                    child: GestureDetector(
+                      onTap: !enableAllDay ? pickStartDateTime : null,
+                      child: AbsorbPointer(
+                        child: TextFormField(
+                          decoration: inputDecoration.copyWith(
+                            labelText: 'Start Time',
+                            prefixIcon: Icon(Icons.calendar_today),
+                          ),
+                          readOnly: true,
+                          controller: TextEditingController(
+                            text: startDateTime != null
+                                ? DateFormat('yyyy-MM-dd HH:mm').format(startDateTime!)
+                                : '',
+                          ),
+                          validator: (value) => startDateTime == null ? 'Required field' : null,
                         ),
-                        readOnly: true,
-                        controller: TextEditingController(
-                          text:
-                              startDateTime != null
-                                  ? DateFormat(
-                                    'yyyy-MM-dd HH:mm',
-                                  ).format(startDateTime!)
-                                  : '',
-                        ),
-                        validator:
-                            (value) =>
-                                startDateTime == null ? 'Required field' : null,
                       ),
                     ),
                   ),
-
-                  GestureDetector(
-                    onTap: !enableAllDay ? pickEndDateTime : null,
-                    child: AbsorbPointer(
-                      child: TextFormField(
-                        decoration: inputDecoration.copyWith(
-                          labelText: 'End Time',
-                          prefixIcon: Icon(Icons.calendar_today),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Text(
+                      'to',
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                  ),
+                  Flexible(
+                    flex: 1,
+                    child: GestureDetector(
+                      onTap: !enableAllDay ? pickEndDateTime : null,
+                      child: AbsorbPointer(
+                        child: TextFormField(
+                          decoration: inputDecoration.copyWith(
+                            labelText: 'End Time',
+                            prefixIcon: Icon(Icons.calendar_today),
+                          ),
+                          readOnly: true,
+                          controller: TextEditingController(
+                            text: endDateTime != null
+                                ? DateFormat('yyyy-MM-dd HH:mm').format(endDateTime!)
+                                : '',
+                          ),
+                          validator: (value) => endDateTime == null ? 'Required field' : null,
                         ),
-                        readOnly: true,
-                        controller: TextEditingController(
-                          text:
-                              endDateTime != null
-                                  ? DateFormat(
-                                    'yyyy-MM-dd HH:mm',
-                                  ).format(endDateTime!)
-                                  : '',
-                        ),
-                        validator:
-                            (value) =>
-                                endDateTime == null ? 'Required field' : null,
                       ),
                     ),
                   ),
@@ -973,15 +950,12 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               SizedBox(height: 16),
-
               if (!isStartBeforeEnd)
                 Text(
                   '⚠ Start time must be before end time!',
                   style: TextStyle(color: Colors.red),
                 ),
               SizedBox(height: 12),
-
-              // Save Button
               ElevatedButton.icon(
                 onPressed: isFormValid ? () => saveLeave(context) : null,
                 icon: Icon(Icons.save),
@@ -1003,8 +977,6 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
                 ),
               ),
               SizedBox(height: 12),
-
-              // Cancel Button
               ElevatedButton.icon(
                 onPressed: isFormValid ? () => cancelLeave(context) : null,
                 icon: Icon(Icons.cancel),
@@ -1032,4 +1004,3 @@ class _LeaveUpdatePageState extends State<LeaveUpdatePage> {
     );
   }
 }
-

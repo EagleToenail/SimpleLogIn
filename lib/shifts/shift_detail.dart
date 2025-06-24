@@ -4,13 +4,97 @@ import 'package:provider/provider.dart';
 import 'package:simple_login/store.dart';
 import 'package:simple_login/shifts/offer_shift.dart';
 import 'package:simple_login/shifts/swap_shift.dart';
+import 'package:http/http.dart' as http;
+import 'package:simple_login/const.dart';
+import 'dart:convert';
 
 class ShiftDetailPage extends StatelessWidget {
   final Map<String, dynamic> shift;
   final bool nowork;
 
   const ShiftDetailPage({Key? key, required this.shift, required this.nowork})
-    : super(key: key);
+      : super(key: key);
+
+  // Method to send accept/decline data to the server
+  // Method to send accept/decline data to the server
+Future<void> sendShiftResponse({
+  required String userID,
+  required String scheduleID,
+  required String type,
+  required String candidate,
+  required BuildContext context,
+}) async {
+  // Base request body
+  Map<String, dynamic> requestBody = {
+    'userID': userID,
+    'scheduleID': scheduleID,
+    'type': type,
+  };
+
+  // Conditionally add 'accept' or 'decline' based on the type
+  if (type.toLowerCase() == 'accept') {
+    requestBody['accept'] = true;
+  } else if (type.toLowerCase() == 'decline') {
+    requestBody['decline'] = true;
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Invalid type. Use "accept" or "decline".'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return; // Exit early if type is invalid
+  }
+
+  final url = Uri.parse(AVAILABLE_ACCEPT); // Reuse the existing URL, or define a new one if needed
+
+  try {
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(requestBody),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['success']) {
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$type successful!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Optionally navigate back or refresh the page
+        Navigator.pop(context);
+      } else {
+        // Show error message from server
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to $type: ${data['message'] ?? 'Unknown error'}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } else {
+      // Handle HTTP error
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to $type: HTTP ${response.statusCode}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  } catch (e) {
+    // Handle network or other errors
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Error: $e'),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -30,11 +114,13 @@ class ShiftDetailPage extends StatelessWidget {
     final totalMinutes = end.difference(start).inMinutes % 60;
     final totalTime =
         '${totalHours.toString().padLeft(2, '0')}:${totalMinutes.toString().padLeft(2, '0')}';
+    final scheduleID = shift['id'] ?? ''; // Ensure scheduleID is available
 
     print(shift);
     print("🗒 userID: $userID");
     print("🗒 shiftUserID: $shiftUserID");
     print("🗒 shiftType: $type");
+
 
     return Scaffold(
       appBar: AppBar(
@@ -139,7 +225,7 @@ class ShiftDetailPage extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              shiftUserName, // Replace with your variable e.g. userName
+                              shiftUserName,
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Color(0xFF3B4861),
@@ -148,7 +234,7 @@ class ShiftDetailPage extends StatelessWidget {
                             ),
                             SizedBox(height: 4),
                             Text(
-                              shiftUserEmail, // Replace with your variable e.g. userEmail
+                              shiftUserEmail,
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w400,
@@ -352,7 +438,7 @@ class ShiftDetailPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      totalTime, // e.g. '07:00'
+                      totalTime,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 32,
@@ -361,7 +447,6 @@ class ShiftDetailPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 18),
-                    // Button to fit content width
                     ShiftActionButtons(
                       nowork: nowork,
                       userID: userID,
@@ -384,7 +469,7 @@ class ShiftActionButtons extends StatelessWidget {
   final bool nowork;
   final String? userID;
   final String shiftUserID;
-  final dynamic shift; // Replace with your actual Shift type
+  final dynamic shift;
   final BuildContext parentContext;
 
   const ShiftActionButtons({
@@ -399,6 +484,10 @@ class ShiftActionButtons extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final type = shift['type'];
+    final scheduleID = shift['id'] ?? ''; // Ensure scheduleID is available
+    print('=====================================');
+    print(shift);
+    print('=====================================');
 
     if (nowork) {
       return ConstrainedBox(
@@ -409,7 +498,25 @@ class ShiftActionButtons extends StatelessWidget {
             children: [
               ElevatedButton(
                 onPressed: () {
-                  // Accept logic here
+                  if (userID == null || scheduleID.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('User ID or Schedule ID is missing'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                  // Send "accept" request to the server
+                  (context.findAncestorWidgetOfExactType<ShiftDetailPage>()
+                          as ShiftDetailPage)
+                      .sendShiftResponse(
+                    userID: userID!,
+                    scheduleID: scheduleID,
+                    type: 'accept',
+                    candidate: 'accept',
+                    context: context,
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF4CAF50), // Green
@@ -432,7 +539,25 @@ class ShiftActionButtons extends StatelessWidget {
               const SizedBox(width: 10),
               ElevatedButton(
                 onPressed: () {
-                  // Decline logic here
+                  if (userID == null || scheduleID.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('User ID or Schedule ID is missing'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                  // Send "decline" request to the server
+                  (context.findAncestorWidgetOfExactType<ShiftDetailPage>()
+                          as ShiftDetailPage)
+                      .sendShiftResponse(
+                    userID: userID!,
+                    scheduleID: scheduleID,
+                    type: 'decline',
+                    candidate: 'decline',
+                    context: context,
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFF44336), // Red
@@ -483,43 +608,39 @@ class ShiftActionButtons extends StatelessWidget {
                 shape: const RoundedRectangleBorder(
                   borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
                 ),
-                builder:
-                    (context) => SafeArea(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _ActionSheetButton(
-                            label: 'Swap Shift',
-                            color: const Color(0xFF4174E2),
-                            onTap:
-                                () => Navigator.push(
-                                  parentContext,
-                                  MaterialPageRoute(
-                                    builder: (_) => SwapShiftPage(shift: shift),
-                                  ),
-                                ),
+                builder: (context) => SafeArea(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ActionSheetButton(
+                        label: 'Swap Shift',
+                        color: const Color(0xFF4174E2),
+                        onTap: () => Navigator.push(
+                          parentContext,
+                          MaterialPageRoute(
+                            builder: (_) => SwapShiftPage(shift: shift),
                           ),
-                          _ActionSheetButton(
-                            label: 'Offer Shift',
-                            color: const Color(0xFF4174E2),
-                            onTap:
-                                () => Navigator.push(
-                                  parentContext,
-                                  MaterialPageRoute(
-                                    builder:
-                                        (_) => OfferShiftPage(shift: shift),
-                                  ),
-                                ),
-                          ),
-                          _ActionSheetButton(
-                            label: 'Cancel',
-                            color: const Color(0xFF4174E2),
-                            isCancel: true,
-                            onTap: () => Navigator.pop(parentContext),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                      _ActionSheetButton(
+                        label: 'Offer Shift',
+                        color: const Color(0xFF4174E2),
+                        onTap: () => Navigator.push(
+                          parentContext,
+                          MaterialPageRoute(
+                            builder: (_) => OfferShiftPage(shift: shift),
+                          ),
+                        ),
+                      ),
+                      _ActionSheetButton(
+                        label: 'Cancel',
+                        color: const Color(0xFF4174E2),
+                        isCancel: true,
+                        onTap: () => Navigator.pop(parentContext),
+                      ),
+                    ],
+                  ),
+                ),
               );
             },
             child: const Text("Can't Work"),
@@ -604,10 +725,9 @@ class _ActionSheetButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin:
-          isCancel
-              ? const EdgeInsets.only(top: 6, bottom: 8)
-              : const EdgeInsets.only(top: 0),
+      margin: isCancel
+          ? const EdgeInsets.only(top: 6, bottom: 8)
+          : const EdgeInsets.only(top: 0),
       width: double.infinity,
       child: TextButton(
         style: TextButton.styleFrom(

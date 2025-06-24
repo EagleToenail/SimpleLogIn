@@ -89,10 +89,12 @@ class _SwapShiftPageState extends State<SwapShiftPage> {
     final requestBody = {
       'scheduleID': scheduleID,
       "type": "shift_swap",
-      'candidates':
-          selectedShiftIDs.map((item) => {"scheduleID": item}).toList(),
+      'candidates': selectedShiftIDs,
     };
 
+    print('-------------selectedShiftIDs--------------');
+    print(selectedShiftIDs);
+    print('---------------------------');
     final url = Uri.parse(SET_NOWORK_URL);
 
     final response = await http.post(
@@ -218,11 +220,16 @@ class _SwapShiftPageState extends State<SwapShiftPage> {
           IconButton(
             icon: const Icon(Icons.check, size: 28),
             onPressed: () {
-              final selectedIds =
-                  selectedShiftIndexes
-                      .map((i) => swapableShifts[i]['id'])
-                      .toList();
-
+              // final selectedIds =
+              //     selectedShiftIndexes
+              //         .map((i) => swapableShifts[i]['id'])
+              //         .toList();
+              final selectedIds = selectedShiftIndexes.map((i) {
+                return {
+                  'scheduleID': swapableShifts[i]['id'],
+                  'user': swapableShifts[i]['user']['id'], // assuming userID is in swapableShifts
+                };
+              }).toList();
               setCandidateSchedules(ownerScheduleID, selectedIds);
             },
           ),

@@ -4,11 +4,13 @@ import 'package:simple_login/const.dart';
 import 'package:simple_login/store.dart'; // Assuming the model is in this file
 
 class ScheduleService {
+  
   // Fetch schedule data for the selected week
   Future<List<ScheduleItem>> fetchData(
     DateTime startDate,
     DateTime endDate,
   ) async {
+
     final requestBody = {
       'startTime': startDate.toIso8601String(),
       'endTime': endDate.toIso8601String(),
@@ -31,6 +33,7 @@ class ScheduleService {
         List<dynamic> shiftData = scheduleMap['schedules'];
 
         print(shiftData);
+        print('======================shiftData=========================');
 
         List<ScheduleItem> shiftList = [];
         if (shiftData.isNotEmpty) {
@@ -116,3 +119,5 @@ List<ScheduleItem> expandScheduleItemsByDay(List<ScheduleItem> originalList) {
 
   return expandedList;
 }
+
+

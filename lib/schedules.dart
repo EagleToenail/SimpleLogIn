@@ -5,6 +5,7 @@ import 'package:simple_login/main.dart';
 import 'package:simple_login/shifts/shift_detail.dart';
 import 'package:simple_login/schedule_service.dart';
 import 'package:simple_login/store.dart';
+import 'package:provider/provider.dart';
 
 class SchedulesPage extends StatefulWidget {
   @override
@@ -32,6 +33,10 @@ class _SchedulesPageState extends State<SchedulesPage> {
 
   Future<void> fetchData() async {
     try {
+    final loggedInUser =
+        Provider.of<AppStore>(context, listen: false).loggedInUser;
+
+    final userID = loggedInUser?.userID;
       if (selectedDateRange == null) return;
 
       final List<ScheduleItem> scheduleList = await _scheduleService.fetchData(
@@ -42,8 +47,11 @@ class _SchedulesPageState extends State<SchedulesPage> {
       print("🥼 ScheduleList: ${scheduleList.length}");
 
       setState(() {
-        scheduleItems = scheduleList.toList();
+        scheduleItems = scheduleList
+          .where((item) => item.user.id == userID)
+          .toList();
       });
+
     } catch (error) {
       print('💥 Error schedule fetching data: $error');
     }
@@ -105,9 +113,27 @@ class _SchedulesPageState extends State<SchedulesPage> {
                     '${formatDate(item.startTime)}',
                     style: const TextStyle(fontSize: 13),
                   ),
-                  Text(
-                    '${formatTime(item.startTime)} - ${formatTime(item.endTime)} at ${item.location.area}',
-                    style: const TextStyle(fontSize: 12),
+                  // Text(
+                  //   '${formatTime(item.startTime)} - ${formatTime(item.endTime)} at ${item.location.area}',
+                  //   style: const TextStyle(fontSize: 12),
+                  // ),
+                  RichText(
+                    text: TextSpan(
+                      style: const TextStyle(fontSize: 12, color: Colors.black),
+                      children: [
+                        TextSpan(
+                          text: '${formatTime(item.startTime)} - ${formatTime(item.endTime)}',
+                        ),
+                        if (item.next == true)
+                          const TextSpan(
+                            text: ' *',
+                            style: TextStyle(color: Color.fromARGB(255, 238, 25, 10)),
+                          ),
+                        TextSpan(
+                          text: ' at ${item.location.area}',
+                        ),
+                      ],
+                    ),
                   ),
                   Text(
                     "${item.location.name}",

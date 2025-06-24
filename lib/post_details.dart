@@ -17,6 +17,8 @@ class PostDetailsPage extends StatefulWidget {
   final String? attachmentUrl;
   final int confirmed;
   final int total;
+  final bool allowComment;
+  final String? type;
 
   const PostDetailsPage({
     super.key,
@@ -29,6 +31,8 @@ class PostDetailsPage extends StatefulWidget {
     required this.confirmed,
     required this.total,
     this.attachmentUrl,
+    required this.allowComment,
+    this.type,
   });
 
   @override
@@ -44,6 +48,9 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   void initState() {
     super.initState();
     _getComments(widget.postId);
+    print('==========================');
+    print(widget.allowComment);
+    print('==========================');
   }
 
   @override
@@ -53,6 +60,11 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
   }
 
   void _handleSendComment(postID, userID) async {
+    if (!widget.allowComment) {
+      Toast.show(context, 'Comments are disabled for this post!', type: ToastType.info);
+      return; // Exit if comments are not allowed
+    }
+
     if (_commentController.text.isNotEmpty) {
       String commentText = _commentController.text.trim();
 
@@ -124,7 +136,7 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
     }
   }
 
-    String _getInitials(String name) {
+  String _getInitials(String name) {
     if (name.trim().isEmpty) return '?';
 
     final parts = name.trim().split(RegExp(r'\s+')); // handles multiple spaces
@@ -150,57 +162,108 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            Container(
-              margin: const EdgeInsets.all(8),
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Colors.blueGrey[400],
-                    child: Text(
-                      // widget.userInitials,
-                      _getInitials(widget.userName),
-                      style: const TextStyle(fontSize: 18, color: Colors.white),
+            if(widget.type != 'system')
+              Container(
+                margin: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: Colors.blueGrey[400],
+                      child: Text(
+                        _getInitials(widget.userName),
+                        style: const TextStyle(fontSize: 18, color: Colors.white),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.userName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.userName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.dateTime,
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 13,
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.dateTime,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 13,
+                            ),
                           ),
-                        ),
-                        Text(
-                          widget.location,
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 13,
+                          Text(
+                            widget.location,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 13,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+            if(widget.type == 'system')
+              Container(
+                margin: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: const Color.fromARGB(255, 230, 46, 77),
+                      child: Text(
+                        "SN",
+                        style: const TextStyle(fontSize: 18, color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                           "System Notification",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.dateTime,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 13,
+                            ),
+                          ),
+                          Text(
+                            widget.location,
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Align(
@@ -223,7 +286,6 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                     width: double.infinity,
                     fit: BoxFit.contain,
                     errorBuilder: (context, error, stackTrace) {
-                      // Show a placeholder or empty box on error
                       return Container(
                         height: 180,
                         color: Colors.grey[300],
@@ -238,11 +300,10 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                         color: Colors.grey[200],
                         alignment: Alignment.center,
                         child: CircularProgressIndicator(
-                          value:
-                              loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                              : null,
                         ),
                       );
                     },
@@ -269,43 +330,39 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
             ),
             const SizedBox(height: 12),
             Container(
-              child:
-                  _comments.isEmpty
-                      ? Center(
-                        child: Text(
-                          "No comments yet",
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 14,
-                          ),
+              child: _comments.isEmpty
+                  ? Center(
+                      child: Text(
+                        "No comments yet",
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 14,
                         ),
-                      )
-                      : ListView.builder(
-                        physics: const NeverScrollableScrollPhysics(),
-                        shrinkWrap: true,
-                        reverse: true,
-                        itemCount: _comments.length,
-                        itemBuilder: (context, index) {
-                          final comment = _comments[index];
-                          final authorName =
-                              comment['author']?['preferredName'] ?? 'U';
-                          final commentContent =
-                              comment['content'] ?? 'No content available';
-
-                          return ListTile(
-                            key: ValueKey(comment['id'] ?? index),
-                            leading: CircleAvatar(
-                              child: Text(
-                                authorName.isNotEmpty
-                                    // ? authorName[0].toUpperCase()
-                                    ? _getInitials(authorName)
-                                    : 'U',
-                              ),
-                            ),
-                            title: Text(commentContent),
-                          );
-                        },
                       ),
+                    )
+                  : ListView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      shrinkWrap: true,
+                      reverse: true,
+                      itemCount: _comments.length,
+                      itemBuilder: (context, index) {
+                        final comment = _comments[index];
+                        final authorName =
+                            comment['author']?['preferredName'] ?? 'U';
+                        final commentContent =
+                            comment['content'] ?? 'No content available';
+
+                        return ListTile(
+                          key: ValueKey(comment['id'] ?? index),
+                          leading: CircleAvatar(
+                            child: Text(
+                              _getInitials(authorName),
+                            ),
+                          ),
+                          title: Text(commentContent),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -317,8 +374,12 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
             Expanded(
               child: TextField(
                 controller: _commentController,
+                enabled: widget.allowComment && widget.type != 'system',
                 decoration: InputDecoration(
-                  hintText: "Write a comment...",
+                  hintText: widget.allowComment ? "Write a comment..." : "Comments disabled",
+                  hintStyle: TextStyle(
+                    color: widget.allowComment ? Colors.grey : Colors.grey[500],
+                  ),
                   isDense: true,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -328,18 +389,20 @@ class _PostDetailsPageState extends State<PostDetailsPage> {
                   filled: true,
                   border: OutlineInputBorder(borderSide: BorderSide.none),
                 ),
-                onSubmitted: (_) => _handleSendComment(widget.postId, userID),
+                onSubmitted: widget.allowComment
+                    ? (_) => _handleSendComment(widget.postId, userID)
+                    : null, // Disable onSubmitted when not allowed
               ),
             ),
             const SizedBox(width: 8),
             CircleAvatar(
               radius: 20,
-              backgroundColor: Colors.blueAccent,
+              backgroundColor: widget.allowComment ? Colors.blueAccent : Colors.grey[400],
               child: IconButton(
                 icon: const Icon(Icons.send, color: Colors.white, size: 18),
-                onPressed: () {
-                  _handleSendComment(widget.postId, userID);
-                },
+                onPressed: widget.allowComment
+                    ? () => _handleSendComment(widget.postId, userID)
+                    : null, // Disable button when not allowed
               ),
             ),
           ],

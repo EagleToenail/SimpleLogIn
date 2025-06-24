@@ -1,4 +1,4 @@
-// lib/screens/homescreenPage.dart
+//lib/screens/homescreenPage.dart
 import 'dart:convert';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
@@ -64,6 +64,10 @@ class _HomeScreenPageState extends State<HomeScreenPage> {
         noworks = List<Map<String, dynamic>>.from(
           (data['noworks'] ?? []).map((item) {
             final newItem = Map<String, dynamic>.from(item);
+
+          print("====================no work====================");
+          print(noworks);
+          print("===============================================");
 
             // Replace userID with user
             if (newItem.containsKey('userID')) {

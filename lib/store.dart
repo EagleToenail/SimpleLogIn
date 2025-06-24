@@ -87,6 +87,7 @@ class AppStore with ChangeNotifier {
                 pronoun: userData['pronouns'],
                 gender: userData['gender'],
                 locationID: userData['locationID'],
+                leaveEntitlements: userData['leaveEntitlements'],
               );
             }).toList();
 
@@ -147,6 +148,22 @@ class AppStore with ChangeNotifier {
     _loggedInUser = null;
     notifyListeners();
   }
+
+    // Get the PeopleItem for the logged-in user
+  PeopleItem? getLoggedInUserDetails() {
+    if (_loggedInUser == null) return null;
+    return _people.firstWhere(
+      (person) => person.id == _loggedInUser!.userID,
+      orElse: () => PeopleItem(
+        id: '',
+        firstName: '',
+        lastName: '',
+        preferredName: '',
+        deputyAccessLevel: '',
+      ),
+    );
+  }
+
 }
 
 class PeopleItem {
@@ -155,7 +172,7 @@ class PeopleItem {
   final String firstName;
   final String lastName;
   final String preferredName;
-  final DateTime? birthday;
+  final String? birthday;
   final String? pronoun;
   final String? gender;
 
@@ -169,6 +186,8 @@ class PeopleItem {
 
   final String deputyAccessLevel;
   final String? locationID;
+  final List<dynamic>? leaveEntitlements;
+  
 
   PeopleItem({
     required this.id,
@@ -187,6 +206,7 @@ class PeopleItem {
     this.pronoun,
     this.gender,
     this.locationID,
+    this.leaveEntitlements
   });
 }
 
@@ -214,6 +234,7 @@ class ScheduleItem {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final String type;
+  final bool? next;
 
   ScheduleItem({
     required this.id,
@@ -225,6 +246,7 @@ class ScheduleItem {
     this.status,
     this.createdAt,
     this.updatedAt,
+    this.next,
   });
 
   factory ScheduleItem.fromJson(Map<String, dynamic> json) {
@@ -239,6 +261,7 @@ class ScheduleItem {
       endTime: DateTime.parse(json['endTime']),
       type: json['type'],
       status: json['status'] as String?,
+      next: json['next'] as bool? ?? false,
       createdAt:
           json['createdAt'] != null ? DateTime.parse(json['createdAt']) : null,
       updatedAt:

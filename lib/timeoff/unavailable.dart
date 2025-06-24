@@ -218,9 +218,11 @@ class UnavailableAddPage extends StatefulWidget {
 }
 
 class _UnavailableAddPageState extends State<UnavailableAddPage> {
-  String unavailableReason = '';
   DateTime unavailableStartDate = DateTime.now();
   DateTime unavailableEndDate = DateTime.now();
+
+  String unavailableReason = '';
+
   bool isFormValid = false;
   bool isStartDateBeforeEndDate = true;
   Duration unavailableDuration = Duration(hours: 0);
@@ -231,6 +233,21 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
   @override
   void initState() {
     super.initState();
+    // Set start date to the beginning of the current day (local time, PDT)
+    unavailableStartDate = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+      0, 0, 0,
+    );
+    // Set end date to the end of the current day (local time, PDT)
+    unavailableEndDate = DateTime(
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+        23, 59, 59,
+      );
+
     startDateController = TextEditingController(
       text: _formatDate(unavailableStartDate),
     );
@@ -256,11 +273,13 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
       unavailableEndDate.year,
       unavailableEndDate.month,
       unavailableEndDate.day,
+      23, 59, 59,
     ).difference(
       DateTime.utc(
         unavailableStartDate.year,
         unavailableStartDate.month,
         unavailableStartDate.day,
+        0,0,0,
       ),
     );
   }
@@ -290,10 +309,16 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
       firstDate: DateTime(2018),
       lastDate: DateTime(2030),
     );
+
     if (picked != null) {
       setState(() {
-        unavailableStartDate = picked;
-        startDateController.text = _formatDate(picked);
+        unavailableStartDate = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+          0, 0, 0,
+        );
+        startDateController.text = _formatDate(unavailableStartDate);
       });
       calculateDuration();
       validateForm();
@@ -307,10 +332,16 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
       firstDate: DateTime(2018),
       lastDate: DateTime(2030),
     );
+
     if (picked != null) {
       setState(() {
-        unavailableEndDate = picked;
-        endDateController.text = _formatDate(picked);
+        unavailableEndDate = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+          23, 59, 59,
+        );
+        endDateController.text = _formatDate(unavailableEndDate);
       });
       calculateDuration();
       validateForm();
@@ -338,9 +369,13 @@ class _UnavailableAddPageState extends State<UnavailableAddPage> {
       );
 
       final data = jsonDecode(response.body);
+      print(data);
+      print('data------------------');
       if (response.statusCode == 200) {
         if (data['success'] == true) {
           Toast.show(context, data['message'], type: ToastType.success);
+        } else {
+           Toast.show(context, data['message'], type: ToastType.error);
         }
         Navigator.pop(context, 'reload');
       } else if (response.statusCode == 409) {

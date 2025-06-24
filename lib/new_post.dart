@@ -153,19 +153,19 @@ class _NewPostPageState extends State<NewPostPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            buildSettingTile(
-              icon:
-                  confirmationRequired
-                      ? Icons.check_circle_outline
-                      : Icons.radio_button_unchecked,
-              title: 'Confirmation required',
-              value: confirmationRequired,
-              onChanged: (val) {
-                setState(() {
-                  confirmationRequired = val;
-                });
-              },
-            ),
+            // buildSettingTile(
+            //   icon:
+            //       confirmationRequired
+            //           ? Icons.check_circle_outline
+            //           : Icons.radio_button_unchecked,
+            //   title: 'Confirmation required',
+            //   value: confirmationRequired,
+            //   onChanged: (val) {
+            //     setState(() {
+            //       confirmationRequired = val;
+            //     });
+            //   },
+            // ),
             buildSettingTile(
               icon: Icons.chat_bubble_outline,
               title: 'Comments enabled',

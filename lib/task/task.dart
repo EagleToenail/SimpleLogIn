@@ -544,9 +544,20 @@ class _TaskAddPageState extends State<TaskAddPage> {
 class PeoplesPage extends StatelessWidget {
   PeoplesPage({super.key});
 
+  
+String _getInitials(String name) {
+  if (name.trim().isEmpty) return '?';
+
+  final parts = name.trim().split(RegExp(r'\s+')); // handles multiple spaces
+  final first = parts.isNotEmpty ? parts[0][0] : '';
+  final last = parts.length > 1 ? parts[1][0] : '';
+
+  return (first + last).toUpperCase();
+}
+
   @override
   Widget build(BuildContext context) {
-    List<PeopleItem> people = Provider.of<AppStore>(context).people;
+    final appStore = Provider.of<AppStore>(context, listen: false);
 
     return Scaffold(
       appBar: AppBar(
@@ -559,47 +570,65 @@ class PeoplesPage extends StatelessWidget {
         elevation: 0.5,
       ),
       backgroundColor: Colors.grey[50],
-      body: ListView.separated(
-        itemCount: people.length,
-        separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey[300]),
-        itemBuilder: (context, index) {
-          final person = people[index];
-          return ListTile(
-            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            leading: CircleAvatar(
-              radius: 26,
-              backgroundImage: NetworkImage(
-                'https://i.pravatar.cc/150?u=${person.id}',
-              ),
-              backgroundColor: Colors.grey[200],
-            ),
-            title: Text(
-              person.preferredName,
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[800],
-                fontSize: 16,
-              ),
-            ),
-            subtitle: Text(
-              "${person.email}",
-              style: TextStyle(
-                fontWeight: FontWeight.w400,
-                color: Colors.grey[800],
-                fontSize: 12,
-              ),
-            ),
-            onTap: () {
-              Navigator.pop(context, {
-                'name': person.preferredName,
-                'id': person.id,
-              });
+      body: FutureBuilder<void>(
+        future: appStore.loadPeople(), // Ensure this method exists in AppStore
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+
+          List<PeopleItem> people = appStore.people;
+
+          if (people.isEmpty) {
+            return const Center(child: Text('No people available'));
+          }
+
+          return ListView.separated(
+            itemCount: people.length,
+            separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey[300]),
+            itemBuilder: (context, index) {
+              final person = people[index];
+              return ListTile(
+                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                leading: CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.blueGrey[400],
+                    child: Text(
+                      _getInitials((person.firstName)),
+                      style: const TextStyle(fontSize: 18, color: Colors.white),
+                    ),
+                ),
+                title: Text(
+                  person.preferredName,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[800],
+                    fontSize: 16,
+                  ),
+                ),
+                subtitle: Text(
+                  "${person.email}",
+                  style: TextStyle(
+                    fontWeight: FontWeight.w400,
+                    color: Colors.grey[800],
+                    fontSize: 12,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context, {
+                    'name': person.preferredName,
+                    'id': person.id,
+                  });
+                },
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                tileColor: Colors.white,
+                hoverColor: Colors.grey[100],
+              );
             },
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            tileColor: Colors.white,
-            hoverColor: Colors.grey[100],
           );
         },
       ),

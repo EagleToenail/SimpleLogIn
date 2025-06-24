@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +9,8 @@ import 'package:http/http.dart' as http;
 import 'package:simple_login/const.dart';
 import 'package:simple_login/store.dart';
 import 'package:simple_login/toast.dart';
+
+import 'package:geolocator/geolocator.dart';
 
 enum ShiftStatus {
   notStarted,
@@ -28,6 +31,10 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
   DateTime? _serverTime;
   Timer? _timer;
 
+  Position? currentLocation;
+  bool isLoading = false;
+  bool _isFirstLocationCall = true;
+
   List<Map<String, dynamic>> todayShifts = [];
   ShiftStatus _shiftStatus = ShiftStatus.notStarted;
 
@@ -36,6 +43,45 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
     super.initState();
     _fetchServerTime();
     _getTodayShift();
+    // Fetch location asynchronously with loading state
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      setState(() {
+        isLoading = true;
+      });
+      bool success = await getCurrentLocation();
+      if (!success) {
+        // Prompt user to retry if initial attempt fails
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color.fromARGB(255, 136, 57, 57),
+              content: Row(
+                children: [
+                  const Text('Could not obtain location. '),
+                  TextButton(
+                    onPressed: () async {
+                      setState(() {
+                        isLoading = true;
+                      });
+                      await getCurrentLocation();
+                      setState(() {
+                        isLoading = false;
+                      });
+                    },
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+      setState(() {
+        isLoading = false;
+        _isFirstLocationCall = false;
+      });
+    });
   }
 
   @override
@@ -85,7 +131,7 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
         final serverTimeString = data['serverTime'];
         final serverTime = DateTime.parse(serverTimeString);
         setState(() {
-          _serverTime = serverTime.toLocal();
+          _serverTime = serverTime.toUtc();
         });
         _timer?.cancel();
         _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -119,10 +165,10 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
         final data = jsonDecode(response.body);
         if (data['success']) {
           final today_shifts = data['schedules'];
-          print(today_shifts);
+          final publishedShifts = today_shifts.where((shift) => shift['published'] == true && shift['approved'] == false && shift['status'] != "missed").toList();
           setState(() {
             todayShifts =
-                today_shifts
+                publishedShifts
                     .map<Map<String, dynamic>>(
                       (e) => Map<String, dynamic>.from(e),
                     )
@@ -137,11 +183,104 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
     }
   }
 
-  Future<void> _setShiftStatus(type) async {
+  Future<bool> getCurrentLocation() async {
     try {
-      final scheduleID = todayShifts.first['id'];
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          Toast.show(context, 'Please enable location services.', type: ToastType.warn);
+        }
+        return false;
+      }
 
-      final requestBody = {"scheduleID": scheduleID, "type": type};
+      // Check and request permissions
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          if (mounted) {
+            Toast.show(context, 'Location permission denied.', type: ToastType.warn);
+          }
+          return false;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (mounted) {
+           Toast.show(context, 'Location permission permanently denied. Please enable it in settings.', type: ToastType.warn);
+        }
+        return false;
+      }
+
+      // Use a position stream to wait for a fresh position
+      Position? freshPosition;
+      final maxWaitTime = _isFirstLocationCall
+          ? Duration(seconds: 45) // 45 seconds for first call
+          : Duration(seconds: 15); // 15 seconds for subsequent calls
+      try {
+        final positionStream = Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.bestForNavigation,
+            distanceFilter: 0, // Receive all updates
+          ),
+        ).timeout(
+          maxWaitTime,
+          onTimeout: (_) =>
+              throw TimeoutException('Location acquisition timed out'),
+        );
+
+        await for (Position position in positionStream) {
+          print("Position update: ${position.latitude}, ${position.longitude}, "
+              "Accuracy: ${position.accuracy} meters, Timestamp: ${position.timestamp}");
+          freshPosition = position;
+          break; // Take the first position from the stream
+        }
+      } catch (e) {
+        if (mounted) {
+          Toast.show(context, 'Failed to obtain location: $e', type: ToastType.warn);
+        }
+        print('Location error: $e');
+        return false;
+      }
+
+      if (freshPosition == null) {
+        if (mounted) {
+          Toast.show(context, 'Could not obtain a location.', type: ToastType.warn);
+        }
+        return false;
+      }
+
+      setState(() {
+        currentLocation = freshPosition;
+      });
+      print(
+          "Location obtained: ${currentLocation!.latitude}, ${currentLocation!.longitude}, "
+          "Accuracy: ${currentLocation!.accuracy} meters, Timestamp: ${currentLocation!.timestamp}");
+      return true;
+    } catch (e) {
+      if (mounted) {
+        Toast.show(context, 'Location Error: $e', type: ToastType.warn);
+      }
+      print("Error obtaining location: $e");
+      return false;
+    }
+  }
+
+  Future<void> _setShiftStatus(String type, int index) async {
+    try {
+
+      print('Index: $index, Type: ${index.runtimeType}');
+      final scheduleID = todayShifts[index]['id'];
+
+      bool locationSuccess = await getCurrentLocation();
+      if (!locationSuccess || currentLocation == null) {
+        setState(() {
+          isLoading = false;
+        });
+        return;
+      }
+
+      final requestBody = {"scheduleID": scheduleID, "type": type, "location": currentLocation};
 
       final url = Uri.parse(CLOCK_SCHEDULE_URL);
 
@@ -154,56 +293,55 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success']) {
-          getShiftStatus(data['schedule']);
+          setState(() {
+            todayShifts[index] = data['schedule']; // Update the specific shift with the new data
+          });
           Toast.show(context, 'Success', type: ToastType.success);
+        } else {
+          print("💥 Clock InOut Error: ${data['message'] ?? 'Unknown error'}");
+          Toast.show(context, data['message'], type: ToastType.warn);
         }
       } else {
-        print("💥 CLock InOut Error: ${response.statusCode}");
+        print("💥 Clock InOut Error: ${response.statusCode}");
       }
     } catch (err) {
       print("💥 Shift ClockInOut Error: $err");
     }
   }
 
-  void _startShift() {
-    setState(() {
-      _shiftStatus = ShiftStatus.shiftStarted;
-    });
-    _setShiftStatus("clockIn");
+  void _startShift(int index) {
+    _setShiftStatus("clockIn", index);
   }
 
-  void _startBreak() {
-    setState(() {
-      _shiftStatus = ShiftStatus.breakStarted;
-    });
-    _setShiftStatus("breakClockIn");
+  void _startBreak(int index) {
+    _setShiftStatus("breakClockIn", index);
   }
 
-  void _stopBreak() {
-    setState(() {
-      _shiftStatus = ShiftStatus.breakStopped;
-    });
-    _setShiftStatus("breakClockOut");
+  void _stopBreak(int index) {
+    _setShiftStatus("breakClockOut", index);
   }
 
-  void _stopShift() {
-    setState(() {
-      _shiftStatus = ShiftStatus.shiftStopped;
-    });
-    _setShiftStatus("clockOut");
+  void _stopShift(int index) {
+    _setShiftStatus("clockOut", index);
   }
 
-  Widget _buildActionButton() {
+Widget _buildActionButtonForShift({required int index, required ShiftStatus shiftStatus}) {
     final buttonPadding = const EdgeInsets.symmetric(
-      vertical: 12,
-      horizontal: 20,
+      vertical: 6,
+      horizontal: 10,
     );
     final borderRadius = BorderRadius.circular(16);
 
-    switch (_shiftStatus) {
+    Widget currentActionButton;
+    Widget? secondaryButton;
+
+    switch (shiftStatus) {
       case ShiftStatus.notStarted:
-        return ElevatedButton.icon(
-          onPressed: _startShift,
+        currentActionButton = ElevatedButton.icon(
+        onPressed: () {
+          print('Start Shift pressed with index: $index, Type: ${index.runtimeType}');
+          _startShift(index);
+        },
           icon: const Icon(
             Icons.play_arrow_rounded,
             color: Color(0xFF2D7C3F),
@@ -225,13 +363,14 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
             shadowColor: Colors.grey.withOpacity(0.15),
             side: const BorderSide(color: Color(0xFF2D7C3F), width: 1.5),
             foregroundColor: const Color(0xFF2D7C3F),
-            alignment: Alignment.centerLeft,
+            alignment: Alignment.center,
           ),
         );
+        break;
 
       case ShiftStatus.shiftStarted:
-        return ElevatedButton.icon(
-          onPressed: _startBreak,
+        currentActionButton = ElevatedButton.icon(
+          onPressed: () => _startBreak(index),
           icon: const Icon(
             Icons.coffee_rounded,
             color: Color(0xFF4CAF50),
@@ -246,42 +385,18 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
             ),
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFE8F5E9), // very soft green
+            backgroundColor: Colors.white,
             padding: buttonPadding,
             shape: RoundedRectangleBorder(borderRadius: borderRadius),
-            elevation: 0,
+            elevation: 3,
+            shadowColor: Colors.grey.withOpacity(0.15),
+            side: const BorderSide(color: Color(0xFF2D7C3F), width: 1.5),
+            foregroundColor: const Color(0xFF2D7C3F),
             alignment: Alignment.centerLeft,
           ),
         );
-
-      case ShiftStatus.breakStarted:
-        return ElevatedButton.icon(
-          onPressed: _stopBreak,
-          icon: const Icon(
-            Icons.coffee_outlined,
-            color: Color(0xFF4CAF50),
-            size: 20,
-          ),
-          label: const Text(
-            'Stop Break',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
-              color: Color(0xFF4CAF50),
-            ),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFE8F5E9),
-            padding: buttonPadding,
-            shape: RoundedRectangleBorder(borderRadius: borderRadius),
-            elevation: 0,
-            alignment: Alignment.centerLeft,
-          ),
-        );
-
-      case ShiftStatus.breakStopped:
-        return ElevatedButton.icon(
-          onPressed: _stopShift,
+        secondaryButton = ElevatedButton.icon(
+          onPressed: () => _stopShift(index),
           icon: const Icon(
             Icons.stop_circle_outlined,
             color: Color(0xFF4CAF50),
@@ -296,16 +411,107 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
             ),
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFE8F5E9),
+            backgroundColor: Colors.white,
             padding: buttonPadding,
             shape: RoundedRectangleBorder(borderRadius: borderRadius),
-            elevation: 0,
+            elevation: 3,
+            shadowColor: Colors.grey.withOpacity(0.15),
+            side: const BorderSide(color: Color(0xFF2D7C3F), width: 1.5),
+            foregroundColor: const Color(0xFF2D7C3F),
             alignment: Alignment.centerLeft,
           ),
         );
+        break;
+
+      case ShiftStatus.breakStarted:
+        currentActionButton = ElevatedButton.icon(
+        onPressed: () {
+          print('Stop Shift pressed with index: $index, Type: ${index.runtimeType}');
+          _stopBreak(index);
+        },
+          icon: const Icon(
+            Icons.coffee_outlined,
+            color: Color(0xFF4CAF50),
+            size: 20,
+          ),
+          label: const Text(
+            'Stop Break',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.normal,
+              color: Color(0xFF4CAF50),
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white,
+            padding: buttonPadding,
+            shape: RoundedRectangleBorder(borderRadius: borderRadius),
+            elevation: 3,
+            shadowColor: Colors.grey.withOpacity(0.15),
+            side: const BorderSide(color: Color(0xFF2D7C3F), width: 1.5),
+            foregroundColor: const Color(0xFF2D7C3F),
+            alignment: Alignment.centerLeft,
+          ),
+        );
+        secondaryButton = ElevatedButton.icon(
+          onPressed: () => _stopShift(index),
+          icon: const Icon(
+            Icons.stop_circle_outlined,
+            color: Color(0xFF4CAF50),
+            size: 20,
+          ),
+          label: const Text(
+            'Stop Shift',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.normal,
+              color: Color(0xFF4CAF50),
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white,
+            padding: buttonPadding,
+            shape: RoundedRectangleBorder(borderRadius: borderRadius),
+            elevation: 3,
+            shadowColor: Colors.grey.withOpacity(0.15),
+            side: const BorderSide(color: Color(0xFF2D7C3F), width: 1.5),
+            foregroundColor: const Color(0xFF2D7C3F),
+            alignment: Alignment.centerLeft,
+          ),
+        );
+        break;
+
+      case ShiftStatus.breakStopped:
+        currentActionButton = ElevatedButton.icon(
+          onPressed: () => _stopShift(index),
+          icon: const Icon(
+            Icons.stop_circle_outlined,
+            color: Color(0xFF4CAF50),
+            size: 20,
+          ),
+          label: const Text(
+            'Stop Shift',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.normal,
+              color: Color(0xFF4CAF50),
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white,
+            padding: buttonPadding,
+            shape: RoundedRectangleBorder(borderRadius: borderRadius),
+            elevation: 3,
+            shadowColor: Colors.grey.withOpacity(0.15),
+            side: const BorderSide(color: Color(0xFF2D7C3F), width: 1.5),
+            foregroundColor: const Color(0xFF2D7C3F),
+            alignment: Alignment.center,
+          ),
+        );
+        break;
 
       case ShiftStatus.shiftStopped:
-        return ElevatedButton.icon(
+        currentActionButton = ElevatedButton.icon(
           onPressed: null,
           icon: const Icon(
             Icons.check_circle,
@@ -321,14 +527,30 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
             ),
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFE8F5E9),
+            backgroundColor: Colors.white,
             padding: buttonPadding,
             shape: RoundedRectangleBorder(borderRadius: borderRadius),
-            elevation: 0,
-            alignment: Alignment.centerLeft,
+            elevation: 3,
+            shadowColor: Colors.grey.withOpacity(0.15),
+            side: const BorderSide(color: Color(0xFF2D7C3F), width: 1.5),
+            foregroundColor: const Color(0xFF2D7C3F),
+            alignment: Alignment.center,
           ),
         );
+        secondaryButton = null;
+        break;
     }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(child: currentActionButton),
+        if (secondaryButton != null) ...[
+          const SizedBox(width: 8),
+          Expanded(child: secondaryButton),
+        ],
+      ],
+    );
   }
 
   @override
@@ -358,7 +580,23 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
             ),
             const SizedBox(height: 20),
             if (todayShifts.isNotEmpty)
-              ShiftCard(shift: todayShifts.first)
+              Column(
+                children: todayShifts.asMap().entries.map<Widget>((entry) {
+                  final index = entry.key;
+                  final shift = entry.value;
+                  return Column(
+                    children: [
+                      ShiftCard(shift: shift),
+                      const SizedBox(height: 10),
+                      _buildActionButtonForShift(
+                        index: index,
+                        shiftStatus: getShiftStatus(shift),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                  );
+                }).toList(),
+              )
             else
               const Text(
                 'No scheduled shifts',
@@ -370,7 +608,6 @@ class _ServerTimeClockState extends State<ServerTimeClock> {
                 ),
               ),
             const SizedBox(height: 30),
-            _buildActionButton(),
           ],
         ),
       ),
@@ -388,10 +625,11 @@ class ShiftCard extends StatelessWidget {
     final area = shift['locationID']?['area'] ?? '';
     final startTimeRaw = shift['startTime'] as String?;
     final endTimeRaw = shift['endTime'] as String?;
+    final next = (shift['next'] as bool?) ?? false;
     final startTime =
-        startTimeRaw != null ? DateTime.parse(startTimeRaw).toLocal() : null;
+        startTimeRaw != null ? DateTime.parse(startTimeRaw).toUtc() : null;
     final endTime =
-        endTimeRaw != null ? DateTime.parse(endTimeRaw).toLocal() : null;
+        endTimeRaw != null ? DateTime.parse(endTimeRaw).toUtc() : null;
 
     final startFormatted =
         startTime != null ? DateFormat.jm().format(startTime) : 'N/A';
@@ -420,7 +658,6 @@ class ShiftCard extends StatelessWidget {
               '$location${area.isNotEmpty ? ", $area" : ""}',
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.grey[800],
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -432,9 +669,21 @@ class ShiftCard extends StatelessWidget {
                   style: TextStyle(fontSize: 13, color: Colors.grey[800]),
                 ),
                 const SizedBox(width: 24),
-                Text(
-                  'End: $endFormatted',
-                  style: TextStyle(fontSize: 13, color: Colors.grey[800]),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'End: $endFormatted',
+                      style: TextStyle(fontSize: 13, color: Colors.grey[800]),
+                    ),
+                    if (next) ...[
+                      const SizedBox(width: 4),
+                      const Text(
+                        '*',
+                        style: TextStyle(color: Colors.red, fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),

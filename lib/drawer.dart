@@ -55,13 +55,13 @@ class AppDrawer extends StatelessWidget {
               ),
             ),
           ),
-          ListTile(
-            leading: Icon(Icons.room_preferences),
-            title: Text('Preferences'),
-            onTap: () {
-              Navigator.pop(context);
-            },
-          ),
+          // ListTile(
+          //   leading: Icon(Icons.room_preferences),
+          //   title: Text('Preferences'),
+          //   onTap: () {
+          //     Navigator.pop(context);
+          //   },
+          // ),
 
           ListTile(
             leading: Icon(Icons.logout_sharp),

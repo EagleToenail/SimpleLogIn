@@ -1,7 +1,7 @@
-// const String SERVER_URL = 'http://13.60.93.6:3001/api';
-//const String IMAGE_SERVER_URL = 'http://13.60.93.6:3001';
-const String SERVER_URL = 'http://192.168.141.64:3001/api';
-const String IMAGE_SERVER_URL = 'http://192.168.141.64:3001';
+const String SERVER_URL = 'http://13.60.93.6:3001/api';
+const String IMAGE_SERVER_URL = 'http://13.60.93.6:3001';
+// const String SERVER_URL = 'http://192.168.141.64:3001/api';
+// const String IMAGE_SERVER_URL = 'http://192.168.141.64:3001';
 
 const String LOGIN_URL = '$SERVER_URL/user/login';
 const String GET_PEOPLE_URL = '$SERVER_URL/user';
@@ -17,6 +17,7 @@ const String GET_TIMESHEETS_LIST_URL = '$SERVER_URL/schedule/user_timesheets';
 const String GET_SWAP_AND_OFFER_LIST_URL =
     '$SERVER_URL/schedule/swap_and_offer_available';
 const String CLOCK_SCHEDULE_URL = '$SERVER_URL/schedule/clock_in_out';
+const String AVAILABLE_ACCEPT = '$SERVER_URL/schedule/available_accept';
 
 const String SET_NOWORK_URL = '$SERVER_URL/schedule/nowork_post';
 

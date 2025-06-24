@@ -71,20 +71,24 @@ class _TimeSheetPageState extends State<TimeSheetPage>
       final data = jsonDecode(response.body);
 
       print("🧾 Timesheets length: ${data['timesheets'].length}");
+      // print("🧾 Timesheets length: ${data['timesheets']}");
 
       setState(() {
         approvedLeaves =
             (data['timesheets'] as List)
-                .where((t) => t['payApproved'] == true)
+                .where((t) => t['approved'] == true)
                 .map((t) => t as Map<String, dynamic>)
                 .toList();
 
         pendingLeaves =
             (data['timesheets'] as List)
-                .where((t) => t['payApproved'] != true)
+                .where((t) => t['approved'] != true)
                 .map((t) => t as Map<String, dynamic>)
                 .toList();
       });
+
+      print(pendingLeaves);
+      print('----------------------');
 
       print("✅ Shift fetch success");
     } else {
@@ -107,6 +111,41 @@ class _TimeSheetPageState extends State<TimeSheetPage>
     final duration = endTime.difference(startTime);
     final durationStr =
         '${duration.inHours}h ${(duration.inMinutes % 60).toString().padLeft(2, '0')}m';
+    
+    Map<String, dynamic>? timesheet;
+    DateTime? timesheetstartStr;
+    DateTime? timesheetendStr;
+    String realdurationStr = '';
+    String timesheetStart = '';
+    String timesheetEnd = '';
+    String payRates = '';
+    String payAmount = '';
+
+    if (approved) {
+      timesheet = leave['timesheetID'] as Map<String, dynamic>?;
+
+      if (timesheet != null &&
+          timesheet['startTime'] != null &&
+          timesheet['endTime'] != null) {
+        timesheetstartStr = DateTime.parse(timesheet['startTime']);
+        timesheetendStr = DateTime.parse(timesheet['endTime']);
+
+        realdurationStr = (timesheetstartStr != null && timesheetendStr != null)
+            ? '${timesheetendStr.difference(timesheetstartStr).inHours}h ${(timesheetendStr.difference(timesheetstartStr).inMinutes % 60).toString().padLeft(2, '0')}m'
+            : '';
+
+        timesheetStart = timesheetstartStr != null
+            ? DateFormat.jm().format(timesheetstartStr)
+            : '';
+
+        timesheetEnd = timesheetendStr != null
+            ? DateFormat.jm().format(timesheetendStr)
+            : '';
+
+        payRates = timesheet['payrates'] ?? '';
+        payAmount = timesheet['payAmount']?.toString() ?? '';
+      }
+    }
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -118,12 +157,12 @@ class _TimeSheetPageState extends State<TimeSheetPage>
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => ShiftDetailsPage()),
-            );
-          },
+          // onTap: () {
+          //   Navigator.push(
+          //     context,
+          //     MaterialPageRoute(builder: (context) => ShiftDetailsPage()),
+          //   );
+          // },
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
@@ -163,6 +202,43 @@ class _TimeSheetPageState extends State<TimeSheetPage>
                           ),
                         ],
                       ),
+                      approved?
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.schedule,
+                            size: 16,
+                            color: Colors.grey[600], // Grey for icon
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            "$timesheetStart - $timesheetEnd  ($realdurationStr)",
+                            style: const TextStyle(
+                              color: Colors.black87, // Dark text color
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ) :const SizedBox.shrink(),
+                      const SizedBox(height: 4),
+                      approved ?
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.work,
+                            size: 16,
+                            color: Colors.grey[600], // Grey for icon
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            "$payRates",
+                            style: const TextStyle(
+                              color: Colors.black87, // Dark text color
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ):const SizedBox.shrink(),
                       const SizedBox(height: 4),
                       Row(
                         children: [
